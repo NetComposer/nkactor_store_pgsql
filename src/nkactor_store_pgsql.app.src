@@ -1,0 +1,9 @@
+{application, nkactor_store_pgsql, [
+    {description, "PGSQL driver for Actor Framework"},
+    {vsn, "develop"},
+    {modules, []},
+    {registered, []},
+    {applications, [nkactor]},
+    {env, [
+    ]}
+]}.
