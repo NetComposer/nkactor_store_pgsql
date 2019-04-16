@@ -42,7 +42,7 @@
 
 
     cascade => boolean(),
-    span_local_id => nkserver_ot:id()
+    span_local_id => nkserver_ot:span_id()
 }.
 
 
