@@ -22,7 +22,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([search/2]).
 -export([pgsql_actors/2, pgsql_delete/2, pgsql_any/2]).
--import(nkactor_sql, [quote/1, filter_path/2]).
+-import(nkactor_store_pgsql_sql, [quote/1, filter_path/2]).
 -import(nkactor_store_pgsql, [query/2, query/3]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
@@ -112,8 +112,8 @@ search(actors_search_generic, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
     Totals = maps:get(totals, Params, false),
-    SQLFilters = nkactor_sql:filters(Params, actors),
-    SQLSort = nkactor_sql:sort(Params, actors),
+    SQLFilters = nkactor_store_pgsql_sql:filters(Params, actors),
+    SQLSort = nkactor_store_pgsql_sql:sort(Params, actors),
 
     % We could use SELECT COUNT(*) OVER(),src,uid... but it doesn't work if no
     % rows are returned
@@ -129,7 +129,7 @@ search(actors_search_generic, Params) ->
             false ->
                 []
         end,
-        nkactor_sql:select(Params, actors),
+        nkactor_store_pgsql_sql:select(Params, actors),
         SQLFilters,
         SQLSort,
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
@@ -141,8 +141,8 @@ search(actors_search_labels, #{only_uid:=true}=Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
     Totals = maps:get(totals, Params, false),
-    SQLFilters = nkactor_sql:filters(Params, labels),
-    SQLSort = nkactor_sql:sort(Params, labels),
+    SQLFilters = nkactor_store_pgsql_sql:filters(Params, labels),
+    SQLSort = nkactor_store_pgsql_sql:sort(Params, labels),
 
     Query = [
         case Totals of
@@ -155,7 +155,7 @@ search(actors_search_labels, #{only_uid:=true}=Params) ->
             false ->
                 []
         end,
-        nkactor_sql:select(Params, labels),
+        nkactor_store_pgsql_sql:select(Params, labels),
         SQLFilters,
         SQLSort,
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
@@ -165,7 +165,7 @@ search(actors_search_labels, #{only_uid:=true}=Params) ->
 
 search(actors_delete, Params) ->
     DoDelete = maps:get(do_delete, Params, false),
-    SQLFilters = nkactor_sql:filters(Params, actors),
+    SQLFilters = nkactor_store_pgsql_sql:filters(Params, actors),
     Query = [
         case DoDelete of
             false ->
