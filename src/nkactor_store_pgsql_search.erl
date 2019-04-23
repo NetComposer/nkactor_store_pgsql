@@ -206,10 +206,6 @@ search(actors_active, Params) ->
     ],
     {query, Query, fun pgsql_active/2};
 
-search(actors_truncate, _) ->
-    Query = [<<"TRUNCATE TABLE actors CASCADE;">>],
-    {query, Query, fun pgsql_any/2};
-
 search(SearchType, _Params) ->
     {error, {search_not_implemented, SearchType}}.
 

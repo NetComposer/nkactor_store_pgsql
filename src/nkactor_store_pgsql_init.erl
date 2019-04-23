@@ -20,7 +20,7 @@
 
 -module(nkactor_store_pgsql_init).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([init/1, init/2, drop/1]).
+-export([init/1, init/2, drop/1, truncate/1]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
 
@@ -298,3 +298,20 @@ create_database_query(yugabyte) ->
         INSERT INTO versions VALUES ('namespaces', '1');
         COMMIT;
     ">>.
+
+
+truncate(SrvId) ->
+    Q = <<"
+        DROP TABLE IF EXISTS versions CASCADE;
+        DROP TABLE IF EXISTS actors CASCADE;
+        DROP TABLE IF EXISTS links CASCADE;
+        DROP TABLE IF EXISTS labels CASCADE;
+        DROP TABLE IF EXISTS fts CASCADE;
+        DROP TABLE IF EXISTS namespaces CASCADE;
+    ">>,
+    case nkactor_store_pgsql:query(SrvId, Q) of
+        {ok, _, _} ->
+            ok;
+        {error, Error} ->
+            {error, Error}
+    end.

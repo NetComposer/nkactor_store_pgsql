@@ -25,7 +25,8 @@
 
 -export([actor_db_init/1,
          actor_db_find/3, actor_db_read/3, actor_db_create/3, actor_db_update/3,
-         actor_db_delete/3, actor_db_search/3, actor_db_aggregate/3]).
+         actor_db_delete/3, actor_db_search/3, actor_db_aggregate/3,
+         actor_db_truncate/2]).
 
 
 %% ===================================================================
@@ -128,6 +129,14 @@ actor_db_aggregate(SrvId, Type, Opts) ->
     stop_span(),
     Result.
 
+
+%% @doc
+-spec actor_db_truncate(id(), opts()) ->
+    ok | {error, term()} | continue().
+
+actor_db_truncate(SrvId, _Opts) ->
+    PgSrvId = nkactor_store_pgsql:get_pgsql_srv(SrvId),
+    nkactor_store_pgsql_init:truncate(PgSrvId).
 
 
 %% ===================================================================
