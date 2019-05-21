@@ -101,16 +101,20 @@ actor_db_delete(SrvId, UIDs, Opts) ->
     {ok, [actor_id()], Meta::map()} | {error, term()} | continue().
 
 actor_db_search(SrvId, Type, Opts) ->
-    PgSrvId = nkactor_store_pgsql:get_pgsql_srv(SrvId),
-    start_span(PgSrvId, <<"search">>, Opts),
-    Result = case nkactor_store_pgsql_search:search(Type, Opts) of
-        {query, Query, Fun} ->
-            nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun, nkactor_params=>Opts});
-        {error, Error} ->
-            {error, Error}
-    end,
-    stop_span(),
-    Result.
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            start_span(PgSrvId, <<"search">>, Opts),
+            Result = case nkactor_store_pgsql_search:search(Type, Opts) of
+                {query, Query, Fun} ->
+                    nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun, nkactor_params=>Opts});
+                {error, Error} ->
+                    {error, Error}
+            end,
+            stop_span(),
+            Result
+    end.
 
 
 %% @doc
@@ -118,16 +122,20 @@ actor_db_search(SrvId, Type, Opts) ->
     {ok, [actor_id()], Meta::map()} | {error, term()} | continue().
 
 actor_db_aggregate(SrvId, Type, Opts) ->
-    PgSrvId = nkactor_store_pgsql:get_pgsql_srv(SrvId),
-    start_span(PgSrvId, <<"aggregate">>, Opts),
-    Result = case nkactor_store_pgsql_aggregation:aggregation(Type, Opts) of
-        {query, Query, Fun} ->
-            nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun});
-        {error, Error} ->
-            {error, Error}
-    end,
-    stop_span(),
-    Result.
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            start_span(PgSrvId, <<"aggregate">>, Opts),
+            Result = case nkactor_store_pgsql_aggregation:aggregation(Type, Opts) of
+                {query, Query, Fun} ->
+                    nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun});
+                {error, Error} ->
+                    {error, Error}
+            end,
+            stop_span(),
+            Result
+    end.
 
 
 %% @doc
@@ -135,8 +143,12 @@ actor_db_aggregate(SrvId, Type, Opts) ->
     ok | {error, term()} | continue().
 
 actor_db_truncate(SrvId, _Opts) ->
-    PgSrvId = nkactor_store_pgsql:get_pgsql_srv(SrvId),
-    nkactor_store_pgsql_init:truncate(PgSrvId).
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            nkactor_store_pgsql_init:truncate(PgSrvId)
+    end.
 
 
 %% ===================================================================
@@ -145,11 +157,15 @@ actor_db_truncate(SrvId, _Opts) ->
 
 %% @private
 call(SrvId, Op, Args, Opts) ->
-    PgSrvId = nkactor_store_pgsql:get_pgsql_srv(SrvId),
-    start_span(PgSrvId, Op, Opts),
-    Result = apply(nkactor_store_pgsql_actors, Op, [PgSrvId|Args]),
-    stop_span(),
-    Result.
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            start_span(PgSrvId, Op, Opts),
+            Result = apply(nkactor_store_pgsql_actors, Op, [PgSrvId|Args]),
+            stop_span(),
+            Result
+    end.
 
 
 %% @private

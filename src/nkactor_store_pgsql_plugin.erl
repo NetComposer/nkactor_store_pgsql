@@ -36,20 +36,18 @@ plugin_deps() ->
 	[nkactor].
 
 
-
 %% @doc
 plugin_config(_SrvId, Config, #{class:=?PACKAGE_CLASS_NKACTOR}) ->
 	Syntax = #{
 		pgsql_service => atom,
-		debug => boolean,
-		'__mandatory' => [pgsql_service]
+		debug => boolean
 	},
 	nkserver_util:parse_config(Config, Syntax).
 
 
 %% @doc
 plugin_cache(_SrvId, Config, _Service) ->
-	PgsqlService = maps:get(pgsql_service, Config),
+	PgsqlService = maps:get(pgsql_service, Config, undefined),
 	Debug = maps:get(debug, Config, false),
 	{ok, #{
 		pgsql_service => PgsqlService,
@@ -57,7 +55,12 @@ plugin_cache(_SrvId, Config, _Service) ->
 	}}.
 
 
+%% @doc
 plugin_start(SrvId, _Config, _Service) ->
-	PgSrvId = nkactor_store_pgsql:get_pgsql_srv(SrvId),
-	nkactor_store_pgsql_init:init(PgSrvId),
-	?CALL_SRV(SrvId, actor_db_init, [SrvId]).
+	case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+		undefined ->
+			ok;
+		PgSrvId ->
+			nkactor_store_pgsql_init:init(PgSrvId),
+		?CALL_SRV(SrvId, actor_db_init, [SrvId])
+	end.
