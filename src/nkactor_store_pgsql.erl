@@ -26,6 +26,7 @@
 -export([truncate/1]).
 -export_type([result_fun/0]).
 
+-include("nkactor_store_pgsql.hrl").
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
 
@@ -55,7 +56,7 @@ get_pgsql_srv(ActorSrvId) ->
     {error, {pgsql_error, nkpgsql:pgsql_error()}|term()}.
 
 query(SrvId, Query) ->
-    nkserver_ot:tag(actor_store_pgsql, sql, Query),
+    nkserver_ot:tag(?PGSQL_SPAN, sql, Query),
     nkpgsql:query(SrvId, Query, #{}).
 
 
@@ -65,7 +66,7 @@ query(SrvId, Query) ->
     {error, {pgsql_error, nkpgsql:pgsql_error()}|term()}.
 
 query(SrvId, Query, QueryMeta) ->
-    nkserver_ot:tag(actor_store_pgsql, sql, Query),
+    nkserver_ot:tag(?PGSQL_SPAN, <<"pgsql.sql">>, Query),
     nkpgsql:query(SrvId, Query, QueryMeta).
 
 
@@ -97,4 +98,4 @@ filter_path(Namespace, Deep) ->
     end.
 
 truncate(SrvId) ->
-    nkactor_store_pgsql_callbacks:actor_db_search(SrvId, actors_truncate, #{}).
+    nk?PGSQL_SPAN_callbacks:actor_db_search(SrvId, actors_truncate, #{}).

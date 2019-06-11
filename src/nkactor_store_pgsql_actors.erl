@@ -29,6 +29,8 @@
 
 
 -include_lib("nkactor/include/nkactor.hrl").
+-include("nkactor_store_pgsql.hrl").
+
 
 %% ===================================================================
 %% Types
