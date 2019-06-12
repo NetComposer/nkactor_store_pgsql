@@ -177,14 +177,7 @@ call(SrvId, Op, Args, Opts) ->
 
 %% @private
 start_span(SrvId, Op, Opts) ->
-    SpanId = maps:get(span_id, Opts, undefined),
-    nkserver_ot:log(SpanId, <<"performig db operation: ~p">>, [Op]),
-    ParentSpan = case SpanId of
-        undefined ->
-            maps:get(parent_span, Opts, undefined);
-        _ ->
-            SpanId
-    end,
+    ParentSpan = maps:get(ot_span_id, Opts, undefined),
     SpanName = <<"PGSQL::", (nklib_util:to_binary(Op))/binary>>,
     nkserver_ot:new(?PGSQL_SPAN, SrvId, SpanName, ParentSpan).
 
