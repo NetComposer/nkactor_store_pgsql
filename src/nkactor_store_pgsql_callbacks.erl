@@ -82,7 +82,7 @@ actor_db_init(_SrvId) ->
     {ok, actor_id(), Meta::map()} | {error, actor_not_found|term()} | continue().
 
 actor_db_find(SrvId, ActorId, Opts) ->
-    call(SrvId, find, [ActorId], Opts).
+    call(SrvId, find, ActorId, Opts).
 
 
 %% @doc Must find and read a full actor on disk by UID (if available) or name
@@ -134,7 +134,7 @@ actor_db_update(SrvId, Actor, Opts) ->
     {ok, [actor_id()], Meta::map()} | {error, term()} | continue().
 
 actor_db_delete(SrvId, UIDs, Opts) ->
-    call(SrvId, delete, [UIDs, Opts], Opts).
+    call(SrvId, delete, UIDs, Opts).
 
 
 %% @doc
@@ -198,13 +198,13 @@ actor_db_truncate(SrvId, _Opts) ->
 %% ===================================================================
 
 %% @private
-call(SrvId, Op, Args, Opts) ->
+call(SrvId, Op, Arg, Opts) ->
     case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
         undefined ->
             continue;
         PgSrvId ->
             start_span(PgSrvId, Op, Opts),
-            Result = apply(nkactor_store_pgsql_actors, Op, [PgSrvId|Args]),
+            Result = nkactor_store_pgsql_actors:Op(PgSrvId, Arg, Opts),
             stop_span(),
             Result
     end.

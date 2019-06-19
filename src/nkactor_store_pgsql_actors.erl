@@ -20,7 +20,7 @@
 
 -module(nkactor_store_pgsql_actors).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([find/2, read/2, create/2, update/2, delete/3]).
+-export([find/3, read/3, create/3, update/3, delete/3]).
 -export([get_links/3, get_linked/3]).
 -import(nkactor_store_pgsql, [query/2, query/3, quote/1]).
 
@@ -42,7 +42,7 @@
 %% ===================================================================
 
 %% @doc
-find(SrvId, #actor_id{group=Group, resource=Res, name=Name, namespace=Namespace}=ActorId)
+find(SrvId, #actor_id{group=Group, resource=Res, name=Name, namespace=Namespace}=ActorId, _Opts)
         when is_binary(Group), is_binary(Res), is_binary(Name), is_binary(Namespace) ->
     Query = [
         <<"SELECT uid FROM actors">>,
@@ -60,7 +60,7 @@ find(SrvId, #actor_id{group=Group, resource=Res, name=Name, namespace=Namespace}
             {error, Error}
     end;
 
-find(SrvId, #actor_id{uid=UID}) when is_binary(UID) ->
+find(SrvId, #actor_id{uid=UID}, _Opts) when is_binary(UID) ->
     Query = [
         <<"SELECT namespace,\"group\",resource,name FROM actors">>,
         <<" WHERE uid=">>, quote(UID), <<";">>
@@ -81,7 +81,7 @@ find(SrvId, #actor_id{uid=UID}) when is_binary(UID) ->
             {error, Error}
     end;
 
-find(SrvId, #actor_id{resource=Res, name=Name, namespace=Namespace}=ActorId)
+find(SrvId, #actor_id{resource=Res, name=Name, namespace=Namespace}=ActorId, _Opts)
         when is_binary(Res), is_binary(Name), is_binary(Namespace) ->
     Query = [
         <<"SELECT uid,\"group\" FROM actors">>,
@@ -98,7 +98,7 @@ find(SrvId, #actor_id{resource=Res, name=Name, namespace=Namespace}=ActorId)
             {error, Error}
     end;
 
-find(SrvId, #actor_id{name=Name, namespace=Namespace}=ActorId)
+find(SrvId, #actor_id{name=Name, namespace=Namespace}=ActorId, _Opts)
         when is_binary(Name), is_binary(Namespace) ->
     Query = [
         <<"SELECT uid,\"group\",resource FROM actors">>,
@@ -116,7 +116,7 @@ find(SrvId, #actor_id{name=Name, namespace=Namespace}=ActorId)
 
 
 %% @doc
-read(SrvId, #actor_id{namespace=Namespace, group=Group, resource=Res, name=Name})
+read(SrvId, #actor_id{namespace=Namespace, group=Group, resource=Res, name=Name}, _Opts)
         when is_binary(Group), is_binary(Res), is_binary(Name), is_binary(Namespace) ->
     Query = [
             <<"SELECT uid,metadata,data FROM actors ">>,
@@ -144,7 +144,7 @@ read(SrvId, #actor_id{namespace=Namespace, group=Group, resource=Res, name=Name}
                 {error, Error}
         end;
 
-read(SrvId, #actor_id{uid=UID}) when is_binary(UID) ->
+read(SrvId, #actor_id{uid=UID}, _Opts) when is_binary(UID) ->
     Query = [
         <<"SELECT namespace,\"group\",resource,name,metadata,data FROM actors ">>,
         <<" WHERE uid=">>, quote(UID), <<";">>
@@ -168,7 +168,7 @@ read(SrvId, #actor_id{uid=UID}) when is_binary(UID) ->
             {error, Error}
     end;
 
-read(SrvId, #actor_id{namespace=Namespace, resource=Res, name=Name})
+read(SrvId, #actor_id{namespace=Namespace, resource=Res, name=Name}, _Opts)
         when is_binary(Res), is_binary(Name), is_binary(Namespace) ->
     Query = [
         <<"SELECT uid,\"group\",metadata,data FROM actors ">>,
@@ -195,7 +195,7 @@ read(SrvId, #actor_id{namespace=Namespace, resource=Res, name=Name})
             {error, Error}
     end;
 
-read(SrvId, #actor_id{namespace=Namespace, name=Name})
+read(SrvId, #actor_id{namespace=Namespace, name=Name}, _Opts)
         when is_binary(Name), is_binary(Namespace) ->
     Query = [
         <<"SELECT uid,\"group\",resource,metadata,data FROM actors ">>,
@@ -233,12 +233,12 @@ read(SrvId, #actor_id{namespace=Namespace, name=Name})
 
 
 %% @doc
-create(SrvId, Actor) ->
+create(SrvId, Actor, _Opts) ->
     save(SrvId, create, Actor).
 
 
 %% @doc
-update(SrvId, Actor) ->
+update(SrvId, Actor, _Opts) ->
     save(SrvId, update, Actor).
 
 
