@@ -23,12 +23,36 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
 
+-export([actor_store_pgsql_parse/4, actor_store_pgsql_unparse/4]).
 -export([actor_db_init/1,
          actor_db_find/3, actor_db_read/3, actor_db_create/3, actor_db_update/3,
          actor_db_delete/3, actor_db_search/3, actor_db_aggregate/3,
          actor_db_truncate/2]).
 
 -include("nkactor_store_pgsql.hrl").
+-include_lib("nkserver/include/nkserver.hrl").
+
+
+%% ===================================================================
+%% Offered callbacks
+%% ===================================================================
+
+
+%% @doc Called after reading the actor, to process further de-serializations
+-spec actor_store_pgsql_parse(nkserver:id(), nkactor:actor(), map(), db_opts()) ->
+    {ok, nkactor:actor(), map()} | {error, term()}.
+
+actor_store_pgsql_parse(_SrvId, Actor, Meta, _Opts) ->
+    {ok, Actor, Meta}.
+
+
+%% @doc Called before saving the actor, to process further serializations
+-spec actor_store_pgsql_parse(nkserver:id(), nkactor:actor(), create|updated, db_opts()) ->
+    {ok, nkactor:actor()} | {error, term()}.
+
+actor_store_pgsql_unparse(_SrvId, _Op, Actor, _Opts) ->
+    {ok, Actor}.
+
 
 
 %% ===================================================================
@@ -70,7 +94,7 @@ actor_db_read(SrvId, ActorId, Opts) ->
         {ok, RawActor, Meta} ->
             case nkactor_syntax:parse_actor(RawActor) of
                 {ok, Actor} ->
-                    {ok, Actor, Meta};
+                    ?CALL_SRV(SrvId, actor_store_pgsql_parse, [SrvId, Actor, Opts, Meta]);
                 {error, Error} ->
                     {error, Error}
             end;
@@ -84,7 +108,12 @@ actor_db_read(SrvId, ActorId, Opts) ->
     {ok, Meta::map()} | {error, uniqueness_violation|term()} | continue().
 
 actor_db_create(SrvId, Actor, Opts) ->
-    call(SrvId, create, [Actor], Opts).
+    case ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, Actor, Opts]) of
+        {ok, Actor2} ->
+            call(SrvId, create, [Actor2], Opts);
+        {error, Error} ->
+            {error, Error}
+    end.
 
 
 %% @doc Must update a new actor on disk.
@@ -92,7 +121,12 @@ actor_db_create(SrvId, Actor, Opts) ->
     {ok, Meta::map()} | {error, term()} | continue().
 
 actor_db_update(SrvId, Actor, Opts) ->
-    call(SrvId, update, [Actor], Opts).
+    case ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, update, Actor, Opts]) of
+        {ok, Actor2} ->
+            call(SrvId, update, [Actor2], Opts);
+        {error, Error} ->
+            {error, Error}
+    end.
 
 
 %% @doc
@@ -156,6 +190,7 @@ actor_db_truncate(SrvId, _Opts) ->
         PgSrvId ->
             nkactor_store_pgsql_init:truncate(PgSrvId)
     end.
+
 
 
 %% ===================================================================
