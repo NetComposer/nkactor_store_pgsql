@@ -21,7 +21,7 @@
 -module(nkactor_store_pgsql_aggregation).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([aggregation/2]).
--import(nkactor_store_pgsql, [query/2, query/3, quote/1, quote_list/1, filter_path/2]).
+-import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/2]).
 
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).

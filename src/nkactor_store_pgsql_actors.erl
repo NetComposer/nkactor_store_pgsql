@@ -22,7 +22,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([find/2, read/2, create/2, update/2, delete/3]).
 -export([get_links/3, get_linked/3]).
--import(nkactor_store_pgsql, [query/2, query/3, quote/1, quote_list/1]).
+-import(nkactor_store_pgsql, [query/2, query/3, quote/1]).
 
 -define(MAX_CASCADE_DELETE, 10000).
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).

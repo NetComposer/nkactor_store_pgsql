@@ -22,8 +22,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([get_pgsql_srv/1]).
 -export([query/2, query/3]).
--export([quote/1, quote_list/1, filter_path/2]).
--export([truncate/1]).
+-export([quote/1, filter_path/2]).
 -export_type([result_fun/0]).
 
 -include("nkactor_store_pgsql.hrl").
@@ -80,9 +79,6 @@ query(SrvId, Query, QueryMeta) ->
 quote(Term) ->
     nkpgsql_util:quote(Term).
 
-quote_list(Term) ->
-    nkpgsql_util:quote_list(Term).
-
 
 %% @private
 filter_path(<<>>, true) ->
@@ -97,5 +93,4 @@ filter_path(Namespace, Deep) ->
             [<<"(path = ">>, quote(Path), <<")">>]
     end.
 
-truncate(SrvId) ->
-    nk?PGSQL_SPAN_callbacks:actor_db_search(SrvId, actors_truncate, #{}).
+

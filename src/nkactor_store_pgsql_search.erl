@@ -22,8 +22,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([search/2]).
 -export([pgsql_actors/2, pgsql_delete/2, pgsql_any/2]).
--import(nkactor_store_pgsql_sql, [quote/1, filter_path/2]).
--import(nkactor_store_pgsql, [query/2, query/3]).
+-import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/2]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
 

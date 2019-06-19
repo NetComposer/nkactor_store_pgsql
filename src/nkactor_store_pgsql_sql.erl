@@ -23,7 +23,7 @@
 -module(nkactor_store_pgsql_sql).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([select/2, filters/2, sort/2]).
--export([quote/1, filter_path/2]).
+-import(nkactor_store_pgsql, [quote/1, filter_path/2]).
 
 -include_lib("nkactor/include/nkactor.hrl").
 
@@ -416,52 +416,6 @@ make_json_spec(Field, Value) ->
 make_json_spec2([]) -> #{};
 make_json_spec2([Last]) -> Last;
 make_json_spec2([Field|Rest]) -> #{Field => make_json_spec2(Rest)}.
-
-
-
-%% @private
-quote(Field) when is_binary(Field) -> <<$', (to_field(Field))/binary, $'>>;
-quote(Field) when is_list(Field) -> <<$', (to_field(Field))/binary, $'>>;
-quote(Field) when is_integer(Field); is_float(Field) -> to_bin(Field);
-quote(true) -> <<"TRUE">>;
-quote(false) -> <<"FALSE">>;
-quote(null) -> <<"NULL">>;
-quote(Field) when is_atom(Field) -> quote(atom_to_binary(Field, utf8));
-quote(Field) when is_map(Field) ->
-    case nklib_json:encode(Field) of
-        error ->
-            lager:error("Error enconding JSON: ~p", [Field]),
-            error(json_encode_error);
-        Json when is_binary(Json)->
-            quote(Json)
-    end.
-
-
-%% @private
-to_field(Field) ->
-    Field2 = to_bin(Field),
-    case binary:match(Field2, <<$'>>) of
-        nomatch ->
-            Field2;
-        _ ->
-            re:replace(Field2, <<$'>>, <<$',$'>>, [global, {return, binary}])
-    end.
-
-
-
-%% @private
-filter_path(<<>>, true) ->
-    [<<"TRUE">>];
-
-filter_path(Namespace, Deep) ->
-    Path = nkactor_lib:make_rev_path(Namespace),
-    case Deep of
-        true ->
-            [<<"(path LIKE ">>, quote(<<Path/binary, "%">>), <<")">>];
-        false ->
-            [<<"(path = ">>, quote(Path), <<")">>]
-    end.
-
 
 
 
