@@ -357,6 +357,46 @@ save(SrvId, Mode, Actors) ->
     end.
 
 
+%% @doc
+delete(SrvId, #actor_id{uid=UID}, _Opts) when is_binary(UID) ->
+    Debug = nkserver:get_cached_config(SrvId, nkactor_store_pgsql, debug),
+    Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
+    QUID = quote(UID),
+    Query = [
+        <<"BEGIN;">>,
+        <<"DELETE FROM actors WHERE uid=">>, QUID, return_nothing(Flavour),
+        <<"DELETE FROM labels WHERE uid=">>, QUID, return_nothing(Flavour),
+        <<"DELETE FROM links WHERE uid=">>, QUID, return_nothing(Flavour),
+        <<"DELETE FROM fts WHERE uid=">>, QUID, return_nothing(Flavour),
+        <<"COMMIT;">>
+    ],
+    QueryOpts = #{
+        pgsql_debug => Debug,
+        auto_rollback => true
+    },
+    case query(SrvId, Query, QueryOpts) of
+        {ok, _, Meta} ->
+            {ok, Meta};
+        {error, Error} ->
+            {error, Error}
+    end;
+
+delete(SrvId, ActorId, Opts)  ->
+    case find(SrvId, ActorId, Opts) of
+        {ok, #actor_id{uid=UID}=ActorId2, _Meta} when is_binary(UID) ->
+            delete(SrvId, ActorId2, Opts);
+        {error, Error} ->
+            {error, Error}
+    end.
+
+
+
+
+
+
+
+
+
 %% @private
 return_nothing(cockroachdb) -> <<" RETURNING NOTHING; ">>;
 return_nothing(_) -> <<"; ">>.
@@ -483,124 +523,140 @@ populate_fields([Actor|Rest], SaveFields) ->
     populate_fields(Rest, SaveFields2).
 
 
-%% @doc
-%% Option 'cascade' to delete all linked
-delete(SrvId, UID, Opts) when is_binary(UID) ->
-    delete(SrvId, [UID], Opts);
 
-delete(SrvId, UIDs, Opts) ->
-    Debug = nkserver:get_cached_config(SrvId, nkactor_store_pgsql, debug),
-    QueryMeta = #{pgsql_debug=>Debug},
-    QueryFun = fun(Pid) ->
-        nkpgsql:do_query(Pid, <<"BEGIN;">>, QueryMeta),
-        {ActorIds, DelQ} = case Opts of
-            #{cascade:=true} ->
-                NestedUIDs = delete_find_nested(Pid, UIDs, sets:new()),
-                ?LLOG(notice, "DELETE on CASCADE: ~p", [NestedUIDs]),
-                delete_actors(SrvId, NestedUIDs, false, Pid, QueryMeta, [], []);
-            _ ->
-                delete_actors(SrvId, UIDs, true, Pid, QueryMeta, [], [])
-        end,
-        nkpgsql:do_query(Pid, DelQ, QueryMeta),
-        case nkpgsql:do_query(Pid, <<"COMMIT;">>, QueryMeta#{deleted_actor_ids=>ActorIds}) of
-            {ok, DeletedActorIds, DeletedMeta} ->
-                % Actors could have been reactivated after the raw_stop and before the
-                % real deletion
-%%                lists:foreach(
-%%                    fun(#actor_id{uid=DUID}) ->
-%%                        nkactor_srv:raw_stop({SrvId, DUID}, actor_deleted)
+
+
+
+
+%%
+%%%% @doc
+%%%% Option 'cascade' to delete all linked
+%%delete(SrvId, UID, Opts) when is_binary(UID) ->
+%%    delete(SrvId, [UID], Opts);
+%%
+%%delete(SrvId, UIDs, Opts) ->
+%%    lager:error("NKLOG DEL1"),
+%%    Debug = nkserver:get_cached_config(SrvId, nkactor_store_pgsql, debug),
+%%    QueryMeta = #{pgsql_debug=>Debug},
+%%    QueryFun = fun(Pid) ->
+%%        lager:error("NKLOG F1"),
+%%        {ok, _, _} = nkpgsql:do_query(Pid, <<"BEGIN;">>, QueryMeta),
+%%        lager:error("NKLOG F2"),
+%%        {ActorIds, DelQ} = case Opts of
+%%            #{cascade:=true} ->
+%%                NestedUIDs = delete_find_nested(Pid, UIDs, sets:new()),
+%%                ?LLOG(notice, "DELETE on CASCADE: ~p", [NestedUIDs]),
+%%                delete_actors(SrvId, NestedUIDs, false, Pid, QueryMeta, [], []);
+%%            _ ->
+%%                delete_actors(SrvId, UIDs, true, Pid, QueryMeta, [], [])
+%%        end,
+%%        lager:error("NKLOG F3"),
+%%        {ok, _, _} = nkpgsql:do_query(Pid, DelQ, QueryMeta),
+%%        lager:error("NKLOG F4"),
+%%        case nkpgsql:do_query(Pid, <<"COMMIT;">>, QueryMeta#{deleted_actor_ids=>ActorIds}) of
+%%            {ok, DeletedActorIds, DeletedMeta} ->
+%%                lager:error("NKLOG DEL3"),
+%%                % Actors could have been reactivated after the raw_stop and before the
+%%                % real deletion
+%%%%                lists:foreach(
+%%%%                    fun(#actor_id{uid=DUID}) ->
+%%%%                        nkactor_srv:raw_stop({SrvId, DUID}, actor_deleted)
+%%%%                    end,
+%%%%                    DeletedActorIds),
+%%                {ok, DeletedActorIds, DeletedMeta};
+%%            Other ->
+%%                lager:error("NKLOG DEL3"),
+%%                Other
+%%        end
+%%    end,
+%%    lager:error("NKLOG DEL5A"),
+%%    case query(SrvId, QueryFun, #{}) of
+%%        {ok, _, Meta1} ->
+%%            lager:error("NKLOG DEL5"),
+%%            {ActorIds2, Meta2} = maps:take(deleted_actor_ids, Meta1),
+%%            {ok, ActorIds2, Meta2};
+%%        {error, Error} ->
+%%            lager:error("NKLOG DEL6"),
+%%            {error, Error}
+%%    end.
+%%
+%%
+%%delete_find_nested(_Pid, [], Set) ->
+%%    sets:to_list(Set);
+%%
+%%delete_find_nested(Pid, [UID|Rest], Set) ->
+%%    case sets:is_element(UID, Set) of
+%%        true ->
+%%            delete_find_nested(Pid, Rest, Set);
+%%        false ->
+%%            Set2 = sets:add_element(UID, Set),
+%%            case sets:size(Set2) > ?MAX_CASCADE_DELETE of
+%%                true ->
+%%                    throw(delete_too_deep);
+%%                false ->
+%%                    Q = [<<" SELECT uid FROM links WHERE link_target=">>, quote(UID), <<";">>],
+%%                    Childs = case nkpgsql:do_query(Pid, Q, #{}) of
+%%                        {ok, [[]], _} ->
+%%                            [];
+%%                        {ok, [List], _} ->
+%%                            [U || {U} <- List]
 %%                    end,
-%%                    DeletedActorIds),
-                {ok, DeletedActorIds, DeletedMeta};
-            Other ->
-                Other
-        end
-    end,
-    case query(SrvId, QueryFun, #{}) of
-        {ok, _, Meta1} ->
-            {ActorIds2, Meta2} = maps:take(deleted_actor_ids, Meta1),
-            {ok, ActorIds2, Meta2};
-        {error, Error} ->
-            {error, Error}
-    end.
-
-
-delete_find_nested(_Pid, [], Set) ->
-    sets:to_list(Set);
-
-delete_find_nested(Pid, [UID|Rest], Set) ->
-    case sets:is_element(UID, Set) of
-        true ->
-            delete_find_nested(Pid, Rest, Set);
-        false ->
-            Set2 = sets:add_element(UID, Set),
-            case sets:size(Set2) > ?MAX_CASCADE_DELETE of
-                true ->
-                    throw(delete_too_deep);
-                false ->
-                    Q = [<<" SELECT uid FROM links WHERE link_target=">>, quote(UID), <<";">>],
-                    Childs = case nkpgsql:do_query(Pid, Q, #{}) of
-                        {ok, [[]], _} ->
-                            [];
-                        {ok, [List], _} ->
-                            [U || {U} <- List]
-                    end,
-                    delete_find_nested(Pid, Childs++Rest, Set2)
-            end
-    end.
-
-
-%% @private
-delete_actors(_SrvId, [], _CheckChilds, _Pid, _QueryMeta, ActorIds, QueryAcc) ->
-    {ActorIds, QueryAcc};
-
-delete_actors(SrvId, [UID|Rest], CheckChilds, Pid, QueryMeta, ActorIds, QueryAcc) ->
-    Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
-    case nkactor_srv:raw_stop(UID, pre_delete) of
-        ok ->
-            ok;
-        {error, RawError} ->
-            ?LLOG(warning, "could not send pre_delete to ~s: ~p", [UID, RawError])
-    end,
-    QUID = quote(UID),
-    case CheckChilds of
-        true ->
-            LinksQ = [<<"SELECT uid FROM links WHERE link_target=">>, QUID, <<";">>],
-            case nkpgsql:do_query(Pid, LinksQ, QueryMeta) of
-                {ok, [[]], _} ->
-                    ok;
-                _ ->
-                    throw(actor_has_linked_actors)
-            end;
-        false ->
-            ok
-    end,
-    GetQ = [
-        <<"SELECT namespace,\"group\",resource,name FROM actors ">>,
-        <<"WHERE uid=">>, quote(UID), <<";">>
-    ],
-    case nkpgsql:do_query(Pid, GetQ, QueryMeta) of
-        {ok, [[{Namespace, Group, Res, Name}]], _} ->
-            ActorId = #actor_id{
-                namespace = Namespace,
-                uid = UID,
-                group = Group,
-                resource = Res,
-                name = Name
-            },
-            QueryAcc2 = [
-                <<"DELETE FROM actors WHERE uid=">>, QUID, return_nothing(Flavour),
-                <<"DELETE FROM labels WHERE uid=">>, QUID, return_nothing(Flavour),
-                <<"DELETE FROM links WHERE uid=">>, QUID, return_nothing(Flavour),
-                <<"DELETE FROM fts WHERE uid=">>, QUID, return_nothing(Flavour)
-                | QueryAcc
-            ],
-            delete_actors(SrvId, Rest, CheckChilds, Pid, QueryMeta, [ActorId|ActorIds], QueryAcc2);
-        {ok, [[]], _} ->
-            throw(actor_not_found);
-        {error, Error} ->
-            throw(Error)
-    end.
+%%                    delete_find_nested(Pid, Childs++Rest, Set2)
+%%            end
+%%    end.
+%%
+%%
+%%%% @private
+%%delete_actors(_SrvId, [], _CheckChilds, _Pid, _QueryMeta, ActorIds, QueryAcc) ->
+%%    {ActorIds, QueryAcc};
+%%
+%%delete_actors(SrvId, [UID|Rest], CheckChilds, Pid, QueryMeta, ActorIds, QueryAcc) ->
+%%    Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
+%%    case nkactor_srv:raw_stop(UID, pre_delete) of
+%%        ok ->
+%%            ok;
+%%        {error, RawError} ->
+%%            ?LLOG(warning, "could not send pre_delete to ~s: ~p", [UID, RawError])
+%%    end,
+%%    QUID = quote(UID),
+%%    case CheckChilds of
+%%        true ->
+%%            LinksQ = [<<"SELECT uid FROM links WHERE link_target=">>, QUID, <<";">>],
+%%            case nkpgsql:do_query(Pid, LinksQ, QueryMeta) of
+%%                {ok, [[]], _} ->
+%%                    ok;
+%%                _ ->
+%%                    throw(actor_has_linked_actors)
+%%            end;
+%%        false ->
+%%            ok
+%%    end,
+%%    GetQ = [
+%%        <<"SELECT namespace,\"group\",resource,name FROM actors ">>,
+%%        <<"WHERE uid=">>, quote(UID), <<";">>
+%%    ],
+%%    case nkpgsql:do_query(Pid, GetQ, QueryMeta) of
+%%        {ok, [[{Namespace, Group, Res, Name}]], _} ->
+%%            ActorId = #actor_id{
+%%                namespace = Namespace,
+%%                uid = UID,
+%%                group = Group,
+%%                resource = Res,
+%%                name = Name
+%%            },
+%%            QueryAcc2 = [
+%%                <<"DELETE FROM actors WHERE uid=">>, QUID, return_nothing(Flavour),
+%%                <<"DELETE FROM labels WHERE uid=">>, QUID, return_nothing(Flavour),
+%%                <<"DELETE FROM links WHERE uid=">>, QUID, return_nothing(Flavour),
+%%                <<"DELETE FROM fts WHERE uid=">>, QUID, return_nothing(Flavour)
+%%                | QueryAcc
+%%            ],
+%%            delete_actors(SrvId, Rest, CheckChilds, Pid, QueryMeta, [ActorId|ActorIds], QueryAcc2);
+%%        {ok, [[]], _} ->
+%%            throw(actor_not_found);
+%%        {error, Error} ->
+%%            throw(Error)
+%%    end.
 
 
 
