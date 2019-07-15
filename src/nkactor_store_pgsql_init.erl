@@ -40,7 +40,7 @@ init(SrvId, Tries) when Tries > 0 ->
         {ok, [Rows], _} ->
             case maps:from_list(Rows) of
                 #{
-                    <<"actors">> := ActorsVsn,
+                    <<"items">> := ActorsVsn,
                     <<"links">> := LinksVsn,
                     <<"labels">> := LabelsVsn,
                     <<"fts">> := FtsVsn,
@@ -58,7 +58,7 @@ init(SrvId, Tries) when Tries > 0 ->
                     ?LLOG(error, "unrecognized database!", []),
                     {error, database_unrecognized}
             end;
-        {error, relation_unknown} ->
+        {error, field_unknown} ->
             Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
             ?LLOG(warning, "database not found: Creating it (~p)", [Flavour]),
             case nkactor_store_pgsql:query(SrvId, create_database_query(Flavour)) of
@@ -139,7 +139,7 @@ create_database_query(postgresql) ->
         INSERT INTO versions VALUES ('labels', '1');
         CREATE TABLE links (
             uid TEXT NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
-            link_target TEXT NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
+            link_target TEXT NOT NULL REFERENCES actors(uid),
             link_type TEXT NOT NULL,
             path TEXT NOT NULL,
             PRIMARY KEY (uid, link_target, link_type)
@@ -206,7 +206,7 @@ create_database_query(cockroachdb) ->
         INSERT INTO versions VALUES ('labels', '1');
         CREATE TABLE links (
             uid STRING NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
-            link_target STRING NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
+            link_target STRING NOT NULL REFERENCES actors(uid),
             link_type STRING NOT NULL,
             path STRING NOT NULL,
             PRIMARY KEY (uid, link_target, link_type),

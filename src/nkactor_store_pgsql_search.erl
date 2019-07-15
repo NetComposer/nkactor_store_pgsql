@@ -110,7 +110,7 @@ search(actors_search, Params) ->
 search(actors_search_generic, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
-    Totals = maps:get(totals, Params, false),
+    Totals = maps:get(get_totals, Params, false),
     SQLFilters = nkactor_store_pgsql_sql:filters(Params, actors),
     SQLSort = nkactor_store_pgsql_sql:sort(Params, actors),
 
@@ -139,7 +139,7 @@ search(actors_search_generic, Params) ->
 search(actors_search_labels, #{only_uid:=true}=Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
-    Totals = maps:get(totals, Params, false),
+    Totals = maps:get(get_totals, Params, false),
     SQLFilters = nkactor_store_pgsql_sql:filters(Params, labels),
     SQLSort = nkactor_store_pgsql_sql:sort(Params, labels),
 
@@ -161,21 +161,6 @@ search(actors_search_labels, #{only_uid:=true}=Params) ->
         <<";">>
     ],
     {query, Query, fun ?MODULE:pgsql_actors/2};
-
-search(actors_delete, Params) ->
-    DoDelete = maps:get(do_delete, Params, false),
-    SQLFilters = nkactor_store_pgsql_sql:filters(Params, actors),
-    Query = [
-        case DoDelete of
-            false ->
-                <<"SELECT COUNT(*) FROM actors">>;
-            true ->
-                <<"DELETE FROM actors">>
-        end,
-        SQLFilters,
-        <<";">>
-    ],
-    {query, Query, fun pgsql_delete/2};
 
 search(actors_delete_old, Params) ->
     Group = maps:get(group, Params),
@@ -215,7 +200,7 @@ search(SearchType, _Params) ->
 %% ===================================================================
 
 %% @private
-analyze(#{filter_fields:=Filter, sort_fields:=Sort, only_uid:=true}) ->
+analyze(#{fields_filter:=Filter, fields_sort:=Sort, only_uid:=true}) ->
     case analyze_filter_labels(Filter, false) of
         true ->
             case analyze_filter_sort(Sort) of

@@ -24,9 +24,10 @@
 
 
 -export([actor_store_pgsql_parse/4, actor_store_pgsql_unparse/4]).
+-export([status/1]).
 -export([actor_db_init/1,
          actor_db_find/3, actor_db_read/3, actor_db_create/3, actor_db_update/3,
-         actor_db_delete/3, actor_db_search/3, actor_db_aggregate/3,
+         actor_db_delete/3, actor_db_delete_multi/3, actor_db_search/3, actor_db_aggregate/3,
          actor_db_truncate/2]).
 
 -include("nkactor_store_pgsql.hrl").
@@ -52,6 +53,15 @@ actor_store_pgsql_parse(_SrvId, Actor, Meta, _Opts) ->
 
 actor_store_pgsql_unparse(_SrvId, _Op, Actor, _Opts) ->
     {ok, Actor}.
+
+
+
+%% ===================================================================
+%% Status
+%% ===================================================================
+
+status({pgsql_error, Error}) -> {"PgSQL Error: ~p", [Error]};
+status(_) -> continue.
 
 
 
@@ -138,6 +148,14 @@ actor_db_delete(SrvId, ActorId, Opts) ->
 
 
 %% @doc
+-spec actor_db_delete_multi(id(), [actor_id()], db_opts()) ->
+    {ok, #{deleted:=integer()}} | {error, term()} | continue().
+
+actor_db_delete_multi(SrvId, ActorIds, Opts) ->
+    call(SrvId, delete_multi, ActorIds, Opts).
+
+
+%% @doc
 -spec actor_db_search(id(), nkactor_backend:search_type(), db_opts()) ->
     {ok, [actor_id()], Meta::map()} | {error, term()} | continue().
 
@@ -149,12 +167,13 @@ actor_db_search(SrvId, Type, Opts) ->
             start_span(PgSrvId, <<"search">>, Opts),
             Result = case nkactor_store_pgsql_search:search(Type, Opts) of
                 {query, Query, Fun} ->
-                    nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun, nkactor_params=>Opts});
+                    Opts2 = #{result_fun=>Fun, nkactor_params=>Opts},
+                    nkactor_store_pgsql:query(PgSrvId, Query, Opts2);
                 {error, Error} ->
                     {error, Error}
             end,
             stop_span(),
-            Result
+            reply(Result)
     end.
 
 
@@ -175,7 +194,7 @@ actor_db_aggregate(SrvId, Type, Opts) ->
                     {error, Error}
             end,
             stop_span(),
-            Result
+            reply(Result)
     end.
 
 
@@ -204,9 +223,9 @@ call(SrvId, Op, Arg, Opts) ->
             continue;
         PgSrvId ->
             start_span(PgSrvId, Op, Opts),
-            Result = nkactor_store_pgsql_actors:Op(PgSrvId, Arg, Opts),
+            Reply = nkactor_store_pgsql_actors:Op(PgSrvId, Arg, Opts),
             stop_span(),
-            Result
+            reply(Reply)
     end.
 
 
@@ -220,3 +239,18 @@ start_span(SrvId, Op, Opts) ->
 %% @private
 stop_span() ->
     nkserver_ot:finish(?PGSQL_SPAN).
+
+
+%% @private
+reply({error, Error}) when
+    Error == actor_has_linked_actors;
+    Error == actor_not_found ->
+    {error, Error};
+
+reply({error, Error}) ->
+    {error, {pgsql_error, Error}};
+
+reply(Other) ->
+    Other.
+
+

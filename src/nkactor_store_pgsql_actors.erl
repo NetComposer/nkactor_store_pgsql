@@ -20,7 +20,7 @@
 
 -module(nkactor_store_pgsql_actors).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([find/3, read/3, create/3, update/3, delete/3]).
+-export([find/3, read/3, create/3, update/3, delete/3, delete_multi/3]).
 -export([get_links/3, get_linked/3]).
 -import(nkactor_store_pgsql, [query/2, query/3, quote/1]).
 
@@ -279,7 +279,8 @@ save(SrvId, Mode, Actors) ->
                         <<"UPDATE actors SET ">>,
                         nklib_util:bjoin([
                             list_to_binary([Field, <<"=">>, Value])
-                            || {Field, Value} <- Values
+                            || {Field, Value} <- Values,
+                               Field == <<"data">> orelse Field == <<"metadata">>
                         ]),
                         <<" WHERE uid=">>, hd(ActorFields), return_nothing(Flavour)
                     ]
@@ -325,8 +326,7 @@ save(SrvId, Mode, Actors) ->
             create ->
                 [];
             update ->
-                []
-                %[<<"DELETE FROM fts WHERE uid IN ">>, UIDs, return_nothing(Flavour)]
+                [<<"DELETE FROM fts WHERE uid IN ">>, UIDs, return_nothing(Flavour)]
         end,
         case FtsFields of
             [] ->
@@ -340,12 +340,12 @@ save(SrvId, Mode, Actors) ->
     ],
 
     Query = [
-        <<"BEGIN;">>,
-        ActorsQuery,
-        LabelsQuery,
-        LinksQuery,
-        FtsQuery,
-        <<"COMMIT;">>
+            <<"BEGIN;">>,
+            ActorsQuery,
+            LabelsQuery,
+            LinksQuery,
+            FtsQuery,
+            <<"COMMIT;">>
     ],
     case query(SrvId, Query, #{auto_rollback=>true}) of
         {ok, _, SaveMeta} ->
@@ -358,25 +358,23 @@ save(SrvId, Mode, Actors) ->
 
 
 %% @doc
-delete(SrvId, #actor_id{uid=UID}, _Opts) when is_binary(UID) ->
+delete(SrvId, #actor_id{uid=UID}=ActorId, _Opts) when is_binary(UID) ->
     Debug = nkserver:get_cached_config(SrvId, nkactor_store_pgsql, debug),
     Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
     QUID = quote(UID),
-    Query = [
-        <<"BEGIN;">>,
-        <<"DELETE FROM actors WHERE uid=">>, QUID, return_nothing(Flavour),
-        <<"DELETE FROM labels WHERE uid=">>, QUID, return_nothing(Flavour),
-        <<"DELETE FROM links WHERE uid=">>, QUID, return_nothing(Flavour),
-        <<"DELETE FROM fts WHERE uid=">>, QUID, return_nothing(Flavour),
-        <<"COMMIT;">>
-    ],
+    % Labels, FTS and links will be deleted automatically
+    % If other actor has a link to us, it will return 'actor_has_linked_actors'
+    Query = [<<"DELETE FROM actors WHERE uid=">>, QUID, return_nothing(Flavour)],
     QueryOpts = #{
-        pgsql_debug => Debug,
-        auto_rollback => true
+        pgsql_debug => Debug
     },
     case query(SrvId, Query, QueryOpts) of
         {ok, _, Meta} ->
+            % In case the actor is still active, terminate it
+            nkactor_srv:raw_stop(ActorId, backend_deleted),
             {ok, Meta};
+        {error, foreign_key_violation} ->
+            {error, actor_has_linked_actors};
         {error, Error} ->
             {error, Error}
     end;
@@ -390,10 +388,43 @@ delete(SrvId, ActorId, Opts)  ->
     end.
 
 
+%% @doc
+%% Deletes a set ob objects
+%% In a first pass, it will delete actors without anyone linking to it
+%% Then it will do new passes, until all are deleted or no new actor can be deleted
+%% (because are other actors linking to it)
+
+delete_multi(SrvId, Ids, Opts) ->
+    do_delete_multi(SrvId, Ids, Opts, 0).
 
 
+%% @private
+do_delete_multi(SrvId, Ids, Opts, Count) ->
+    case do_delete_multi(SrvId, Ids, Opts, [], [], Count) of
+        {ok, [], [], Count2} ->
+            {ok, #{deleted => Count2}};
+        {ok, Deleted, NotDeleted, Count2} when length(Deleted) > 0 ->
+            do_delete_multi(SrvId, NotDeleted, Opts, Count2);
+        {ok, _, [NotDeleted|_], _Count2} ->
+            {error, {actor_not_deleted, NotDeleted}};
+        {error, Error} ->
+            {error, Error}
+    end.
 
 
+%% @private
+do_delete_multi(_SrvId, [], _Opts, Deleted, NotDeleted, Count) ->
+    {ok, Deleted, NotDeleted, Count};
+
+do_delete_multi(SrvId, [Id|Rest], Opts, Deleted, NotDeleted, Count) ->
+    case delete(SrvId, Id, Opts) of
+        {ok, _} ->
+            do_delete_multi(SrvId, Rest, Opts, [Id|Deleted], NotDeleted, Count+1);
+        {error, actor_has_linked_actors} ->
+            do_delete_multi(SrvId, Rest, Opts, Deleted, [Id|NotDeleted], Count);
+        {error, Error} ->
+            {error, Error}
+    end.
 
 
 
@@ -684,7 +715,7 @@ get_links(SrvId, UID, Type) ->
 
 
 %% @doc
-%% Returns {UID, Type}
+%% Returns [{UID, Type}]
 get_linked(SrvId, UID, Type) ->
     UID2 = to_bin(UID),
     Query = [
