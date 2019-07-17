@@ -102,12 +102,7 @@ actor_db_find(SrvId, ActorId, Opts) ->
 actor_db_read(SrvId, ActorId, Opts) ->
     case call(SrvId, read, ActorId, Opts) of
         {ok, RawActor, Meta} ->
-            case nkactor_syntax:parse_actor(RawActor) of
-                {ok, Actor} ->
-                    ?CALL_SRV(SrvId, actor_store_pgsql_parse, [SrvId, Actor, Opts, Meta]);
-                {error, Error} ->
-                    {error, Error}
-            end;
+            parse_actor(SrvId, RawActor, Meta, Opts);
         {error, Error} ->
             {error, Error}
     end.
@@ -157,7 +152,7 @@ actor_db_delete_multi(SrvId, ActorIds, Opts) ->
 
 %% @doc
 -spec actor_db_search(id(), nkactor_backend:search_type(), db_opts()) ->
-    {ok, [actor_id()], Meta::map()} | {error, term()} | continue().
+    {ok, [actor()], Meta::map()} | {error, term()} | continue().
 
 actor_db_search(SrvId, Type, Opts) ->
     case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
@@ -168,7 +163,12 @@ actor_db_search(SrvId, Type, Opts) ->
             Result = case nkactor_store_pgsql_search:search(Type, Opts) of
                 {query, Query, Fun} ->
                     Opts2 = #{result_fun=>Fun, nkactor_params=>Opts},
-                    nkactor_store_pgsql:query(PgSrvId, Query, Opts2);
+                    case nkactor_store_pgsql:query(PgSrvId, Query, Opts2) of
+                        {ok, ActorList, Meta} ->
+                            parse_actors(ActorList, SrvId, Meta, Opts, []);
+                        {error, Error} ->
+                            {error, Error}
+                    end;
                 {error, Error} ->
                     {error, Error}
             end,
@@ -179,7 +179,7 @@ actor_db_search(SrvId, Type, Opts) ->
 
 %% @doc
 -spec actor_db_aggregate(id(), nkactor_backend:agg_type(), db_opts()) ->
-    {ok, [actor_id()], Meta::map()} | {error, term()} | continue().
+    {ok, [actor()], Meta::map()} | {error, term()} | continue().
 
 actor_db_aggregate(SrvId, Type, Opts) ->
     case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
@@ -239,6 +239,29 @@ start_span(SrvId, Op, Opts) ->
 %% @private
 stop_span() ->
     nkserver_ot:finish(?PGSQL_SPAN).
+
+
+%% @doc
+parse_actor(SrvId, RawActor, Meta, Opts) ->
+    case nkactor_syntax:parse_actor(RawActor) of
+        {ok, Actor} ->
+            ?CALL_SRV(SrvId, actor_store_pgsql_parse, [SrvId, Actor, Meta, Opts]);
+        {error, Error} ->
+            {error, Error}
+    end.
+
+
+%% @doc
+parse_actors([], _SrvId, Meta, _Opts, Acc) ->
+    {ok, lists:reverse(Acc), Meta};
+
+parse_actors([RawActor|Rest], SrvId, Meta, Opts, Acc) ->
+    case parse_actor(SrvId, RawActor, Meta, Opts) of
+        {ok, Actor, Meta2} ->
+            parse_actors(Rest, SrvId, Meta2, Opts, [Actor|Acc]);
+        {error, Error} ->
+            {error, Error}
+    end.
 
 
 %% @private
