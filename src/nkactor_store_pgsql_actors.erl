@@ -250,7 +250,7 @@ save(SrvId, Mode, Actor) when is_map(Actor) ->
 
 save(SrvId, Mode, Actors) ->
     Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
-    Fields = populate_fields(Actors, #save_fields{}),
+    Fields = populate_fields(Actors, Mode, #save_fields{}),
     #save_fields{
         names = FieldNames,
         uids = UIDs,
@@ -279,8 +279,7 @@ save(SrvId, Mode, Actors) ->
                         <<"UPDATE actors SET ">>,
                         nklib_util:bjoin([
                             list_to_binary([Field, <<"=">>, Value])
-                            || {Field, Value} <- Values,
-                               Field == <<"data">> orelse Field == <<"metadata">>
+                            || {Field, Value} <- Values, Field /= <<"uid">>
                         ]),
                         <<" WHERE uid=">>, hd(ActorFields), return_nothing(Flavour)
                     ]
@@ -435,11 +434,11 @@ return_nothing(_) -> <<"; ">>.
 
 
 %% @private
-populate_fields([], #save_fields{uids=UIDs}=SaveFields) ->
+populate_fields([], _Op, #save_fields{uids=UIDs}=SaveFields) ->
     UIDs2 = list_to_binary([<<"(">>, nklib_util:bjoin(UIDs, $,), <<")">>]),
     SaveFields#save_fields{uids=UIDs2};
 
-populate_fields([Actor|Rest], SaveFields) ->
+populate_fields([Actor|Rest], Op, SaveFields) ->
     #save_fields{
         uids = UIDs,
         actors = Actors,
@@ -470,8 +469,7 @@ populate_fields([Actor|Rest], SaveFields) ->
         <<>> ->
             null;
         Exp1 ->
-            {ok, Exp2} = nklib_date:to_epoch(Exp1, secs),
-            Exp2
+            Exp1
     end,
     FtsWords1 = maps:fold(
         fun(Key, Text, Acc) ->
@@ -483,7 +481,7 @@ populate_fields([Actor|Rest], SaveFields) ->
         fun(Key, Values, Acc1) ->
             lists:foldl(
                 fun(Value, Acc2) ->
-                    [<<" ">>, to_bin(Key), $:, to_bin(Value) | Acc2]
+                    [<<" ">>, to_bin(Key), "||" , to_bin(Value) | Acc2]
                 end,
                 Acc1,
                 Values)
@@ -491,20 +489,29 @@ populate_fields([Actor|Rest], SaveFields) ->
         [],
         FtsWords1),
     Actor2 = [
-        QUID,
-        quote(Group),
-        quote(Res),
-        quote(Name),
-        quote(Namespace),
         quote(Data),
         quote(Meta),
-        QPath,
         quote(Hash),
         quote(Updated),
         quote(IsActive),
         quote(Expires),
         quote(list_to_binary([FtsWords2, <<" ">>]))
     ],
+    Actor3 = case Op of
+        create ->
+            [
+                QUID,
+                quote(Group),
+                quote(Res),
+                quote(Name),
+                quote(Namespace),
+                QPath
+                | Actor2
+            ];
+        update ->
+            [QUID | Actor2]
+    end,
+
     %Actors2 = [list_to_binary([<<"(">>, ActorFields, <<")">>]) | Actors],
     Labels2 = maps:fold(
         fun(Key, Val, Acc) ->
@@ -538,20 +545,28 @@ populate_fields([Actor|Rest], SaveFields) ->
         end,
         Fts,
         FtsWords1),
-    FieldNames = [
-        <<"uid">>, <<"\"group\"">>, <<"resource">>, <<"name">>, <<"namespace">>,
-        <<"data">>,<<"metadata">>,<<"path">>,<<"hash">>,<<"last_update">>,
-        <<"is_active">>,<<"expires">>,<<"fts_words">>
+    FieldNames1 = [
+        <<"data">>, <<"metadata">>, <<"hash">>, <<"last_update">>,
+        <<"is_active">>, <<"expires">>, <<"fts_words">>
     ],
+    FieldNames2 = case Op of
+        create ->
+            [
+                <<"uid">>, <<"\"group\"">>, <<"resource">>,
+                <<"name">>, <<"namespace">>, <<"path">> | FieldNames1
+            ];
+        update ->
+            [ <<"uid">> | FieldNames1]
+    end,
     SaveFields2 = SaveFields#save_fields{
-        names = FieldNames,
+        names = FieldNames2,
         uids = [QUID|UIDs],
-        actors = [Actor2|Actors],
+        actors = [Actor3|Actors],
         labels = Labels2,
         links = Links2,
         fts = Fts2
     },
-    populate_fields(Rest, SaveFields2).
+    populate_fields(Rest, Op, SaveFields2).
 
 
 

@@ -134,21 +134,21 @@ make_filter([{<<"metadata.fts.", Field/binary>>, Op, Val, string} | Rest], actor
     Filter = case {Field, Op} of
         {<<"*">>, eq} ->
             % We search for an specific word in all fields
-            % For example fieldX:valueY, found by LIKE '%:valueY %'
+            % For example fieldX||valueY, found by LIKE '%||valueY %'
             % (final space makes sure word has finished)
-            <<"(fts_words LIKE '%:", Word/binary, " %')">>;
+            <<"(fts_words LIKE '%||", Word/binary, " %')">>;
         {<<"*">>, prefix} ->
             % We search for a prefix word in all fields
-            % For example fieldX:valueYXX, found by LIKE '%:valueY%'
-            <<"(fts_words LIKE '%:", Word/binary, "%')">>;
+            % For example fieldX||valueYXX, found by LIKE '%||valueY%'
+            <<"(fts_words LIKE '%||", Word/binary, "%')">>;
         {_, eq} ->
             % We search for an specific word in an specific fields
             % For example fieldX:valueYXX, found by LIKE '% FieldX:valueY %'
-            <<"(fts_words LIKE '% ", Field/binary, $:, Word/binary, " %')">>;
+            <<"(fts_words LIKE '% ", Field/binary, "||", Word/binary, " %')">>;
         {_, prefix} ->
             % We search for a prefix word in an specific fields
             % For example fieldX:valueYXX, found by LIKE '% FieldX:valueY%'
-            <<"(fts_words LIKE '% ", Field/binary, $:, Word/binary, "%')">>;
+            <<"(fts_words LIKE '% ", Field/binary, "||", Word/binary, "%')">>;
         _ ->
             <<"(TRUE = FALSE)">>
     end,

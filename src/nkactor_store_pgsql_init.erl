@@ -118,7 +118,7 @@ create_database_query(postgresql) ->
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
             is_active TEXT,
-            expires INTEGER,
+            expires TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
@@ -185,7 +185,7 @@ create_database_query(cockroachdb) ->
             hash STRING NOT NULL,
             last_update STRING NOT NULL,
             is_active STRING,
-            expires INTEGER,
+            expires STRING,
             fts_words STRING,
             UNIQUE INDEX name_idx (namespace, \"group\", resource, name),
             INDEX last_update_idx (last_update),
@@ -253,7 +253,7 @@ create_database_query(yugabyte) ->
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
             is_active TEXT,
-            expires INTEGER,
+            expires TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);

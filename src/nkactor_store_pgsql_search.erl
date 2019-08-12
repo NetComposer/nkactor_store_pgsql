@@ -110,7 +110,7 @@ search(actors_search, Params) ->
 search(actors_search_generic, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
-    Totals = maps:get(get_totals, Params, false),
+    Totals = maps:get(get_total, Params, false),
     SQLFilters = nkactor_store_pgsql_sql:filters(Params, actors),
     SQLSort = nkactor_store_pgsql_sql:sort(Params, actors),
 
@@ -139,7 +139,7 @@ search(actors_search_generic, Params) ->
 search(actors_search_labels, #{only_uid:=true}=Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
-    Totals = maps:get(get_totals, Params, false),
+    Totals = maps:get(get_total, Params, false),
     SQLFilters = nkactor_store_pgsql_sql:filters(Params, labels),
     SQLSort = nkactor_store_pgsql_sql:sort(Params, labels),
 
@@ -179,16 +179,35 @@ search(actors_delete_old, Params) ->
 
 
 search(actors_active, Params) ->
-    FromDate = maps:get(from_date, Params, <<>>),
-    Size = maps:get(size, Params, 10),
+    LastUID = maps:get(last_cursor, Params, <<>>),
+    Size = maps:get(size, Params, 100),
     Query = [
-        <<"SELECT uid,namespace,\"group\",resource,name,last_update FROM actors">>,
-        <<" WHERE is_active='T' AND last_update>">>, quote(FromDate),
-        <<" ORDER BY last_update" >>,
+        <<"SELECT uid,namespace,\"group\",resource,name FROM actors">>,
+        <<" WHERE is_active='T' AND uid>">>, quote(LastUID),
+        <<" ORDER BY uid ASC">>,
         <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],
     {query, Query, fun pgsql_active/2};
+
+%% NOT TESTED
+search(actors_expired, Params) ->
+    LastDate = case maps:find(last_cursor, Params) of
+        {ok, Date0} ->
+            Date0;
+        error ->
+            nklib_date:now_3339(usecs)
+    end,
+    Size = maps:get(size, Params, 100),
+    Query = [
+        <<"SELECT uid,namespace,\"group\",resource,name,expires FROM actors">>,
+        <<" WHERE expires < ">>, quote(LastDate),
+        <<" ORDER BY expires ASC">>,
+        <<" LIMIT ">>, to_bin(Size),
+        <<";">>
+    ],
+    {query, Query, fun pgsql_expired/2};
+
 
 search(SearchType, _Params) ->
     {error, {search_not_implemented, SearchType}}.
@@ -303,8 +322,8 @@ pgsql_delete([{{select, _}, [{Total}], _}], Meta) ->
 
 
 %% @private
-pgsql_active([{{select, 0}, [], _OpMeta}], _Meta) ->
-    {ok, [], #{last_date=><<>>, size=>0}};
+pgsql_active([{{select, 0}, [], _OpMeta}], Meta) ->
+    {ok, [], #{meta=>Meta}};
 
 pgsql_active([{{select, Size}, Rows, _OpMeta}], _Meta) ->
     ActorIds = [
@@ -315,9 +334,29 @@ pgsql_active([{{select, Size}, Rows, _OpMeta}], _Meta) ->
             resource = Res,
             name = Name
         }
-        || {UID, Namespace, Group, Res, Name, _Date} <- Rows],
-    [{_, _, _, _, _, LastDate}|_] = lists:reverse(Rows),
-    {ok, ActorIds, #{last_date=>LastDate, size=>Size}}.
+        || {UID, Namespace, Group, Res, Name} <- Rows],
+    [{UID, _, _, _, _}|_] = lists:reverse(Rows),
+    {ok, ActorIds, #{last_cursor=>UID, size=>Size}}.
+
+
+%% @private
+pgsql_expired([{{select, 0}, [], _OpMeta}], Meta) ->
+    {ok, [], #{meta=>Meta}};
+
+pgsql_expired([{{select, Size}, Rows, _OpMeta}], _Meta) ->
+    lager:error("NKLOG SIZE ~p", [Size]),
+    ActorIds = [
+        #actor_id{
+            uid = UID,
+            namespace = Namespace,
+            group = Group,
+            resource = Res,
+            name = Name
+        }
+        || {UID, Namespace, Group, Res, Name, _Last} <- Rows],
+    [{_, _, _, _, _, Last}|_] = lists:reverse(Rows),
+    {ok, ActorIds, #{last_cursor=>Last, size=>Size}}.
+
 
 
 %% @private

@@ -243,7 +243,7 @@ stop_span() ->
 
 %% @doc
 parse_actor(SrvId, RawActor, Meta, Opts) ->
-    case nkactor_syntax:parse_actor(RawActor) of
+    case nkactor_syntax:parse_actor(RawActor, #{}) of
         {ok, Actor} ->
             ?CALL_SRV(SrvId, actor_store_pgsql_parse, [SrvId, Actor, Meta, Opts]);
         {error, Error} ->
@@ -255,19 +255,24 @@ parse_actor(SrvId, RawActor, Meta, Opts) ->
 parse_actors([], _SrvId, Meta, _Opts, Acc) ->
     {ok, lists:reverse(Acc), Meta};
 
-parse_actors([RawActor|Rest], SrvId, Meta, Opts, Acc) ->
+parse_actors([#{uid:=_}=RawActor|Rest], SrvId, Meta, Opts, Acc) ->
     case parse_actor(SrvId, RawActor, Meta, Opts) of
         {ok, Actor, Meta2} ->
             parse_actors(Rest, SrvId, Meta2, Opts, [Actor|Acc]);
         {error, Error} ->
             {error, Error}
-    end.
+    end;
+
+parse_actors([Other|Rest], SrvId, Meta, Opts, Acc) ->
+    parse_actors(Rest, SrvId, Meta, Opts, [Other|Acc]).
+
 
 
 %% @private
 reply({error, Error}) when
     Error == actor_has_linked_actors;
-    Error == actor_not_found ->
+    Error == actor_not_found;
+    Error == uniqueness_violation ->
     {error, Error};
 
 reply({error, Error}) ->
