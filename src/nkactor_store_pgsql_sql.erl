@@ -266,17 +266,20 @@ make_filter([{Field, Op, Val, Type} | Rest], actors, Flavor, Acc) ->
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 % SPECIAL Label table!
-make_filter([{<<"metadata.labels.", Label/binary>>, exists, Bool, _}|Rest], labels, Flavor, Acc) ->
+make_filter([{<<"label:", Label/binary>>, exists, Bool, _}|Rest], labels, Flavor, Acc) ->
     Not = case Bool of true -> []; false -> <<"NOT ">> end,
     Filter = [<<"(">>, Not, <<"label_key = ">>, quote(Label), <<")">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
-make_filter([{<<"metadata.labels.", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, Acc) ->
+make_filter([{<<"label:", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, Acc) ->
     Filter = [
         <<"(label_key = ">>, quote(Label), <<") AND ">>,
         <<"(">>, get_op(<<"label_value">>, Op, Value), <<")">>
     ],
-    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]).
+    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"metadata.labels.", Label/binary>>, Op, Bool, Type}|Rest], labels, Flavor, Acc) ->
+    make_filter([{<<"label:", Label/binary>>, Op, Bool, Type}|Rest], labels, Flavor, Acc).
 
 
 
@@ -347,7 +350,14 @@ make_sort([], _Table, _Flavor, []) ->
 make_sort([], _Table, _Flavor, Acc) ->
     [<<" ORDER BY ">>, nklib_util:bjoin(lists:reverse(Acc), $,)];
 
-make_sort([{Order, <<"metadata.labels", _/binary>>, _Type}|Rest], labels, Flavor, Acc) ->
+make_sort([{Order, Field, Type}|Rest], actors, Flavor, Acc) ->
+    Item = [
+        field_name(Field, Type),
+        case Order of asc -> <<" ASC">>; desc -> <<" DESC">> end
+    ],
+    make_sort(Rest, actors, Flavor, [list_to_binary(Item)|Acc]);
+
+make_sort([{Order, <<"label:", _/binary>>, _Type}|Rest], labels, Flavor, Acc) ->
     Item = [
         <<"label_key">>,
         case Order of asc -> <<" ASC">>; desc -> <<" DESC">> end,
@@ -356,12 +366,11 @@ make_sort([{Order, <<"metadata.labels", _/binary>>, _Type}|Rest], labels, Flavor
     ],
     make_sort(Rest, labels, Flavor, [list_to_binary(Item)|Acc]);
 
-make_sort([{Order, Field, Type}|Rest], actors, Flavor, Acc) ->
-    Item = [
-        field_name(Field, Type),
-        case Order of asc -> <<" ASC">>; desc -> <<" DESC">> end
-    ],
-    make_sort(Rest, actors, Flavor, [list_to_binary(Item)|Acc]).
+make_sort([{Order, <<"metadata.labels.", Label/binary>>, Type}|Rest], labels, Flavor, Acc) ->
+    make_sort([{Order, <<"label:", Label/binary>>, Type}|Rest], labels, Flavor, Acc).
+
+
+
 
 
 
