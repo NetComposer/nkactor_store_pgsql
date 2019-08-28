@@ -302,12 +302,12 @@ create_database_query(yugabyte) ->
 
 truncate(SrvId) ->
     Q = <<"
-        DROP TABLE IF EXISTS versions CASCADE;
-        DROP TABLE IF EXISTS actors CASCADE;
-        DROP TABLE IF EXISTS links CASCADE;
-        DROP TABLE IF EXISTS labels CASCADE;
-        DROP TABLE IF EXISTS fts CASCADE;
-        DROP TABLE IF EXISTS namespaces CASCADE;
+        TRUNCATE versions CASCADE;
+        TRUNCATE actors CASCADE;
+        TRUNCATE links CASCADE;
+        TRUNCATE labels CASCADE;
+        TRUNCATE fts CASCADE;
+        TRUNCATE namespaces CASCADE;
     ">>,
     case nkactor_store_pgsql:query(SrvId, Q) of
         {ok, _, _} ->

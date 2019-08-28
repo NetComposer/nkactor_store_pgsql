@@ -350,6 +350,7 @@ save(SrvId, Mode, Actors) ->
         {ok, _, SaveMeta} ->
             {ok, SaveMeta};
         {error, foreign_key_violation} ->
+            ?LLOG(warning, "Foreign Key Violantion: ~s", [list_to_binary(Query)]),
             {error, linked_actor_unknown};
         {error, Error} ->
             {error, Error}
