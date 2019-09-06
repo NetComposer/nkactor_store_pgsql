@@ -34,10 +34,10 @@
 
 
 %% @private
-select(#{only_uid:=true}, Table) ->
-    [<<"SELECT uid FROM ">>, to_bin(Table)];
+select(#{only_uid:=true}, actors) ->
+    <<"SELECT uid FROM actors">>;
 
-select(Params, Table) ->
+select(Params, actors) ->
     [
         <<"SELECT uid,namespace,\"group\",resource,name">>,
         case maps:get(get_metadata, Params, false) of
@@ -52,8 +52,15 @@ select(Params, Table) ->
             false ->
                 []
         end,
-        <<" FROM ">>, to_bin(Table)
-    ].
+        <<" FROM actors">>
+    ];
+
+select(#{only_uid:=true}, labels) ->
+    <<"SELECT uid FROM labels">>;
+
+select(_Params, labels) ->
+    <<"SELECT uid,label_key,label_value FROM labels">>.
+
 
 
 %% ===================================================================
@@ -266,17 +273,33 @@ make_filter([{Field, Op, Val, Type} | Rest], actors, Flavor, Acc) ->
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 % SPECIAL Label table!
+make_filter([{<<"label:", Label/binary>>, first, _Value, _}|Rest], labels, Flavor, Acc) ->
+    Filter = [<<"(label_key >= ">>, quote(Label), <<")">>],
+    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"label:", Label/binary>>, top, _Value, _}|Rest], labels, Flavor, Acc) ->
+    Filter = [<<"(label_key > ">>, quote(Label), <<")">>],
+    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"label:", Label/binary>>, last, _Value, _}|Rest], labels, Flavor, Acc) ->
+    Filter = [<<"(label_key <= ">>, quote(Label), <<")">>],
+    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"label:", Label/binary>>, bottom, _Value, _}|Rest], labels, Flavor, Acc) ->
+    Filter = [<<"(label_key < ">>, quote(Label), <<")">>],
+    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
+
 make_filter([{<<"label:", Label/binary>>, exists, Bool, _}|Rest], labels, Flavor, Acc) ->
     Not = case Bool of true -> []; false -> <<"NOT ">> end,
     Filter = [<<"(">>, Not, <<"label_key = ">>, quote(Label), <<")">>],
-    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"label:", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, Acc) ->
     Filter = [
         <<"(label_key = ">>, quote(Label), <<") AND ">>,
         <<"(">>, get_op(<<"label_value">>, Op, Value), <<")">>
     ],
-    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"metadata.labels.", Label/binary>>, Op, Bool, Type}|Rest], labels, Flavor, Acc) ->
     make_filter([{<<"label:", Label/binary>>, Op, Bool, Type}|Rest], labels, Flavor, Acc).
@@ -357,6 +380,20 @@ make_sort([{Order, Field, Type}|Rest], actors, Flavor, Acc) ->
     ],
     make_sort(Rest, actors, Flavor, [list_to_binary(Item)|Acc]);
 
+make_sort([{Order, <<"label_key">>, _Type}|Rest], labels, Flavor, Acc) ->
+    Item = [
+        <<"label_key">>,
+        case Order of asc -> <<" ASC">>; desc -> <<" DESC">> end
+    ],
+    make_sort(Rest, labels, Flavor, [list_to_binary(Item)|Acc]);
+
+make_sort([{Order, <<"label_value">>, _Type}|Rest], labels, Flavor, Acc) ->
+    Item = [
+        <<"label_value">>,
+        case Order of asc -> <<" ASC">>; desc -> <<" DESC">> end
+    ],
+    make_sort(Rest, labels, Flavor, [list_to_binary(Item)|Acc]);
+
 make_sort([{Order, <<"label:", _/binary>>, _Type}|Rest], labels, Flavor, Acc) ->
     Item = [
         <<"label_key">>,
@@ -371,13 +408,9 @@ make_sort([{Order, <<"metadata.labels.", Label/binary>>, Type}|Rest], labels, Fl
 
 
 
-
-
-
 %% ===================================================================
 %% Utilities
 %% ===================================================================
-
 
 
 %% @private

@@ -21,7 +21,7 @@
 -module(nkactor_store_pgsql_search).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([search/2]).
--export([pgsql_actors/2, pgsql_delete/2, pgsql_any/2]).
+-export([pgsql_actors/2, pgsql_labels/2, pgsql_delete/2, pgsql_any/2]).
 -import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/2]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
@@ -136,7 +136,7 @@ search(actors_search_generic, Params) ->
     ],
     {query, Query, fun ?MODULE:pgsql_actors/2};
 
-search(actors_search_labels, #{only_uid:=true}=Params) ->
+search(actors_search_labels, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
     Totals = maps:get(get_total, Params, false),
@@ -160,7 +160,7 @@ search(actors_search_labels, #{only_uid:=true}=Params) ->
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],
-    {query, Query, fun ?MODULE:pgsql_actors/2};
+    {query, Query, fun ?MODULE:pgsql_labels/2};
 
 search(actors_delete_old, Params) ->
     Group = maps:get(group, Params),
@@ -357,6 +357,26 @@ pgsql_expired([{{select, Size}, Rows, _OpMeta}], _Meta) ->
     [{_, _, _, _, _, Last}|_] = lists:reverse(Rows),
     {ok, ActorIds, #{last_cursor=>Last, size=>Size}}.
 
+
+%% @private
+pgsql_labels(Result, Meta) ->
+    % lager:error("NKLOG META ~p", [_Meta]),
+    #{nkactor_params:=_Params, pgsql:=#{time:=Time}} = Meta,
+    {Rows, Meta2} = case Result of
+        [{{select, Size}, Rows0, _OpMeta}] ->
+            {Rows0, #{size=>Size, time=>Time}};
+        [{{select, 1}, [{Total}], _}, {{select, Size}, Rows0, _OpMeta}] ->
+            {Rows0, #{size=>Size, total=>Total, time=>Time}}
+    end,
+    Labels = lists:map(
+        fun
+            ({UID}) ->
+                {UID, <<>>, <<>>};
+            ({UID, Key, Value}) ->
+                {UID, Key, Value}
+        end,
+        Rows),
+    {ok, Labels, Meta2}.
 
 
 %% @private
