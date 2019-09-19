@@ -510,7 +510,14 @@ populate_fields([Actor|Rest], Op, SaveFields) ->
                 | Actor2
             ];
         update ->
-            [QUID | Actor2]
+            [
+                QUID,
+                quote(Name),
+                quote(Namespace),
+                QPath
+                |
+                Actor2
+            ]
     end,
 
     %Actors2 = [list_to_binary([<<"(">>, ActorFields, <<")">>]) | Actors],
@@ -557,7 +564,10 @@ populate_fields([Actor|Rest], Op, SaveFields) ->
                 <<"name">>, <<"namespace">>, <<"path">> | FieldNames1
             ];
         update ->
-            [ <<"uid">> | FieldNames1]
+            [
+                <<"uid">>,
+                <<"name">>, <<"namespace">>, <<"path">> | FieldNames1
+            ]
     end,
     SaveFields2 = SaveFields#save_fields{
         names = FieldNames2,
