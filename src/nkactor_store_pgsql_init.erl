@@ -117,14 +117,12 @@ create_database_query(postgresql) ->
             path TEXT NOT NULL,
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
-            is_active TEXT,
-            expires TEXT,
+            activate_time TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
         CREATE INDEX last_update_idx on actors (last_update);
-        CREATE INDEX expires_idx on actors (expires);
-        CREATE INDEX active_idx on actors (is_active, last_update);
+        CREATE INDEX activate_idx on actors (activate_time);
         CREATE INDEX data_idx on actors USING gin(data);
         CREATE INDEX metadata_idx on actors USING gin(metadata);
         INSERT INTO versions VALUES ('actors', '1');
@@ -184,13 +182,11 @@ create_database_query(cockroachdb) ->
             path STRING NOT NULL,
             hash STRING NOT NULL,
             last_update STRING NOT NULL,
-            is_active STRING,
-            expires STRING,
+            activate_time STRING,
             fts_words STRING,
             UNIQUE INDEX name_idx (namespace, \"group\", resource, name),
             INDEX last_update_idx (last_update),
-            INDEX expires_idx (expires),
-            INDEX active_idx (is_active, last_update),
+            INDEX activate_idx (activate_time),
             INVERTED INDEX data_idx (data),
             INVERTED INDEX metadata_idx (metadata)
         );
@@ -252,14 +248,12 @@ create_database_query(yugabyte) ->
             path TEXT NOT NULL,
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
-            is_active TEXT,
-            expires TEXT,
+            activate_time TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
         CREATE INDEX last_update_idx on actors (last_update);
-        CREATE INDEX expires_idx on actors (expires);
-        CREATE INDEX active_idx on actors (is_active, last_update);
+        CREATE INDEX activate_idx on actors (activate_time);
         INSERT INTO versions VALUES ('actors', '1');
         CREATE TABLE labels (
             uid TEXT NOT NULL,

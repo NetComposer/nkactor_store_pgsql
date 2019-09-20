@@ -462,11 +462,7 @@ populate_fields([Actor|Rest], Op, SaveFields) ->
     QPath = quote(Path),
     Hash = maps:get(hash, Meta, <<>>),
     Updated = maps:get(update_time, Meta),
-    IsActive = case maps:get(is_active, Meta, false) of
-        true -> <<"T">>;
-        false -> null
-    end,
-    Expires = case maps:get(expires_time, Meta, <<>>) of
+    Activate = case maps:get(activate_time, Meta, <<>>) of
         <<>> ->
             null;
         Exp1 ->
@@ -494,8 +490,7 @@ populate_fields([Actor|Rest], Op, SaveFields) ->
         quote(Meta),
         quote(Hash),
         quote(Updated),
-        quote(IsActive),
-        quote(Expires),
+        quote(Activate),
         quote(list_to_binary([FtsWords2, <<" ">>]))
     ],
     Actor3 = case Op of
@@ -555,7 +550,7 @@ populate_fields([Actor|Rest], Op, SaveFields) ->
         FtsWords1),
     FieldNames1 = [
         <<"data">>, <<"metadata">>, <<"hash">>, <<"last_update">>,
-        <<"is_active">>, <<"expires">>, <<"fts_words">>
+        <<"activate_time">>, <<"fts_words">>
     ],
     FieldNames2 = case Op of
         create ->

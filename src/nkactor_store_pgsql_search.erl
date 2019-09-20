@@ -177,36 +177,17 @@ search(actors_delete_old, Params) ->
     ],
     {query, Query, fun pgsql_delete/2};
 
-
-search(actors_active, Params) ->
-    LastUID = maps:get(last_cursor, Params, <<>>),
+% Find actors with activation date past or due in 2h from now
+search(actors_activate, #{last_time:=LastTime}=Params) ->
     Size = maps:get(size, Params, 100),
     Query = [
-        <<"SELECT uid,namespace,\"group\",resource,name FROM actors">>,
-        <<" WHERE is_active='T' AND uid>">>, quote(LastUID),
-        <<" ORDER BY uid ASC">>,
+        <<"SELECT uid,namespace,\"group\",resource,name,activate_time FROM actors">>,
+        <<" WHERE activate_time < ">>, quote(LastTime),
+        <<" ORDER BY activate_time DESC">>,
         <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],
-    {query, Query, fun pgsql_active/2};
-
-%% NOT TESTED
-search(actors_expired, Params) ->
-    LastDate = case maps:find(last_cursor, Params) of
-        {ok, Date0} ->
-            Date0;
-        error ->
-            nklib_date:now_3339(usecs)
-    end,
-    Size = maps:get(size, Params, 100),
-    Query = [
-        <<"SELECT uid,namespace,\"group\",resource,name,expires FROM actors">>,
-        <<" WHERE expires < ">>, quote(LastDate),
-        <<" ORDER BY expires ASC">>,
-        <<" LIMIT ">>, to_bin(Size),
-        <<";">>
-    ],
-    {query, Query, fun pgsql_expired/2};
+    {query, Query, fun pgsql_activate/2};
 
 
 search(SearchType, _Params) ->
@@ -322,29 +303,10 @@ pgsql_delete([{{select, _}, [{Total}], _}], Meta) ->
 
 
 %% @private
-pgsql_active([{{select, 0}, [], _OpMeta}], Meta) ->
+pgsql_activate([{{select, 0}, [], _OpMeta}], Meta) ->
     {ok, [], #{meta=>Meta}};
 
-pgsql_active([{{select, Size}, Rows, _OpMeta}], _Meta) ->
-    ActorIds = [
-        #actor_id{
-            uid = UID,
-            namespace = Namespace,
-            group = Group,
-            resource = Res,
-            name = Name
-        }
-        || {UID, Namespace, Group, Res, Name} <- Rows],
-    [{UID, _, _, _, _}|_] = lists:reverse(Rows),
-    {ok, ActorIds, #{last_cursor=>UID, size=>Size}}.
-
-
-%% @private
-pgsql_expired([{{select, 0}, [], _OpMeta}], Meta) ->
-    {ok, [], #{meta=>Meta}};
-
-pgsql_expired([{{select, Size}, Rows, _OpMeta}], _Meta) ->
-    lager:error("NKLOG SIZE ~p", [Size]),
+pgsql_activate([{{select, Size}, Rows, _OpMeta}], _Meta) ->
     ActorIds = [
         #actor_id{
             uid = UID,
@@ -355,7 +317,7 @@ pgsql_expired([{{select, Size}, Rows, _OpMeta}], _Meta) ->
         }
         || {UID, Namespace, Group, Res, Name, _Last} <- Rows],
     [{_, _, _, _, _, Last}|_] = lists:reverse(Rows),
-    {ok, ActorIds, #{last_cursor=>Last, size=>Size}}.
+    {ok, ActorIds, #{last_time=>Last, size=>Size}}.
 
 
 %% @private
