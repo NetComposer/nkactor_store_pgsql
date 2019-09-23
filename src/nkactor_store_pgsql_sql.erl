@@ -273,21 +273,22 @@ make_filter([{Field, Op, Val, Type} | Rest], actors, Flavor, Acc) ->
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 % SPECIAL Label table!
-make_filter([{<<"label:", Label/binary>>, first, _Value, _}|Rest], labels, Flavor, Acc) ->
-    Filter = [<<"(label_key >= ">>, quote(Label), <<")">>],
-    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
-
-make_filter([{<<"label:", Label/binary>>, top, _Value, _}|Rest], labels, Flavor, Acc) ->
-    Filter = [<<"(label_key > ">>, quote(Label), <<")">>],
-    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
-
-make_filter([{<<"label:", Label/binary>>, last, _Value, _}|Rest], labels, Flavor, Acc) ->
-    Filter = [<<"(label_key <= ">>, quote(Label), <<")">>],
-    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
-
-make_filter([{<<"label:", Label/binary>>, bottom, _Value, _}|Rest], labels, Flavor, Acc) ->
-    Filter = [<<"(label_key < ">>, quote(Label), <<")">>],
-    make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
+make_filter([{<<"label:", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, Acc)
+        when Op == first; Op == top; Op == last;  Op == bottom ->
+    Op2 = case Op of
+        first -> <<" >= ">>;
+        top -> <<" > ">>;
+        last -> <<" <= ">>;
+        bottom -> <<" < ">>
+    end,
+    Filter1 = [<<"(label_key ", Op2/binary>>, quote(Label), <<")">>],
+    Filter2 = case Value of
+        <<>> ->
+            Filter1;
+        _ ->
+            [Filter1, [<<" AND (label_value ", Op2/binary>>, quote(Value), <<")">>]]
+    end,
+    make_filter(Rest, labels, Flavor, [list_to_binary(Filter2) | Acc]);
 
 make_filter([{<<"label:", Label/binary>>, exists, Bool, _}|Rest], labels, Flavor, Acc) ->
     Not = case Bool of true -> []; false -> <<"NOT ">> end,
