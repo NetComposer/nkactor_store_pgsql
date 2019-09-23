@@ -117,12 +117,12 @@ create_database_query(postgresql) ->
             path TEXT NOT NULL,
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
-            activate_time TEXT,
+            activate TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
         CREATE INDEX last_update_idx on actors (last_update);
-        CREATE INDEX activate_idx on actors (activate_time);
+        CREATE INDEX activate_idx on actors (activate);
         CREATE INDEX data_idx on actors USING gin(data);
         CREATE INDEX metadata_idx on actors USING gin(metadata);
         INSERT INTO versions VALUES ('actors', '1');
@@ -182,11 +182,11 @@ create_database_query(cockroachdb) ->
             path STRING NOT NULL,
             hash STRING NOT NULL,
             last_update STRING NOT NULL,
-            activate_time STRING,
+            activate STRING,
             fts_words STRING,
             UNIQUE INDEX name_idx (namespace, \"group\", resource, name),
             INDEX last_update_idx (last_update),
-            INDEX activate_idx (activate_time),
+            INDEX activate_idx (activate),
             INVERTED INDEX data_idx (data),
             INVERTED INDEX metadata_idx (metadata)
         );
@@ -248,12 +248,12 @@ create_database_query(yugabyte) ->
             path TEXT NOT NULL,
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
-            activate_time TEXT,
+            activate TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
         CREATE INDEX last_update_idx on actors (last_update);
-        CREATE INDEX activate_idx on actors (activate_time);
+        CREATE INDEX activate_idx on actors (activate);
         INSERT INTO versions VALUES ('actors', '1');
         CREATE TABLE labels (
             uid TEXT NOT NULL,

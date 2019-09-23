@@ -181,9 +181,9 @@ search(actors_delete_old, Params) ->
 search(actors_activate, #{last_time:=LastTime}=Params) ->
     Size = maps:get(size, Params, 100),
     Query = [
-        <<"SELECT uid,namespace,\"group\",resource,name,activate_time FROM actors">>,
-        <<" WHERE activate_time < ">>, quote(LastTime),
-        <<" ORDER BY activate_time DESC">>,
+        <<"SELECT uid,namespace,\"group\",resource,name,activate FROM actors">>,
+        <<" WHERE activate < ">>, quote(LastTime),
+        <<" ORDER BY activate DESC">>,
         <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],

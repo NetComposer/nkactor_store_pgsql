@@ -550,7 +550,7 @@ populate_fields([Actor|Rest], Op, SaveFields) ->
         FtsWords1),
     FieldNames1 = [
         <<"data">>, <<"metadata">>, <<"hash">>, <<"last_update">>,
-        <<"activate_time">>, <<"fts_words">>
+        <<"activate">>, <<"fts_words">>
     ],
     FieldNames2 = case Op of
         create ->
