@@ -178,6 +178,9 @@ search(actors_delete_old, Params) ->
     {query, Query, fun pgsql_delete/2};
 
 % Find actors with activation date past or due in 2h from now
+% It should find:
+% - all actors having 'auto_activate' in metadata
+% - actors have a 'activation_date' in metadata
 search(actors_activate, #{last_time:=LastTime}=Params) ->
     Size = maps:get(size, Params, 100),
     Query = [

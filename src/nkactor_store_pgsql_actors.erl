@@ -462,11 +462,16 @@ populate_fields([Actor|Rest], Op, SaveFields) ->
     QPath = quote(Path),
     Hash = maps:get(hash, Meta, <<>>),
     Updated = maps:get(update_time, Meta),
-    Activate = case maps:get(activate_time, Meta, <<>>) of
-        <<>> ->
-            null;
-        Exp1 ->
-            Exp1
+    Activate = case Meta of
+        #{auto_activate:=true} ->
+            <<"1">>;
+        _ ->
+            case maps:get(activate_time, Meta, <<>>) of
+                <<>> ->
+                    null;
+                Exp1 ->
+                    Exp1
+        end
     end,
     FtsWords1 = maps:fold(
         fun(Key, Text, Acc) ->
