@@ -270,6 +270,7 @@ parse_actors([Other|Rest], SrvId, Meta, Opts, Acc) ->
 
 %% @private
 reply({error, Error}) when
+    Error == duplicated_name;
     Error == actor_has_linked_actors;
     Error == actor_not_found;
     Error == uniqueness_violation ->
