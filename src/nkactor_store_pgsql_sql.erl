@@ -121,6 +121,8 @@ expand_filter([#{field:=Field, value:=Value}=Term|Rest], Acc) ->
         boolean ->
             to_boolean(Value);
         object ->
+            Value;
+        array ->
             Value
     end,
     expand_filter(Rest, [{Field, Op, Value2, Type}|Acc]).
@@ -161,20 +163,6 @@ make_filter([{<<"metadata.fts.", Field/binary>>, Op, Val, string} | Rest], actor
     end,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
-%%% The @> operator is the only one that uses the inverted index
-%%% This group of queries will work for any type, and also for 'object'
-%%make_filter([{<<"data.", Field/binary>>, eq, Value, _}|Rest], actors, Flavor, Acc) ->
-%%    Json = make_json_spec(Field, Value),
-%%    Filter = [<<"(data @> '">>, Json, <<"')">>],
-%%    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
-%%
-%%%% Not indexed on CR
-%%make_filter([{<<"data.", _/binary>>=Field, exists, Bool, Value}|Rest], actors, Flavor, Acc) ->
-%%    Not = case Bool of true -> <<"NOT">>; false -> <<>> end,
-%%    Field2 = field_name(Field, Value),
-%%    Filter = [<<"(">>, Field2, <<" IS ">>, Not, <<" NULL)">>],
-%%    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
-
 make_filter([{<<"metadata.is_enabled">>, eq, true, boolean}|Rest], actors, Flavor, Acc) ->
     Filter = <<"(NOT metadata @> '{\"is_enabled\":false}')">>,
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
@@ -183,35 +171,15 @@ make_filter([{<<"metadata.is_enabled">>, eq, false, boolean}|Rest], actors, Flav
     Filter = <<"(metadata @> '{\"is_enabled\":false}')">>,
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
 
-%%% Do it explicitly to allow '.' in label keys
-%%make_filter([{<<"metadata.labels.", Label/binary>>, eq, Value, _}|Rest], actors, Flavor, Acc) ->
-%%    Json = nklib_json:encode(#{Label=>Value}),
-%%    Filter = [<<"(metadata->'labels' @> '">>, Json, <<"')">>],
-%%    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
-%%
-%%% IT DOES NOT USE INDEX IN COCKROACH!
-%%make_filter([{<<"metadata.labels.", Label/binary>>, exists, Bool, _}|Rest], actors, Flavor, Acc) ->
-%%    Not = case Bool of true -> []; false -> <<"NOT ">> end,
-%%    Filter = [<<"(">>, Not, <<"metadata->'labels' ? '">>, Label, <<"')">>],
-%%    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
-
-%% CR only indexed on '@>'
-make_filter([{<<"data.", Field/binary>>, eq, Value, _}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Value),
+make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_value(Field, Type, Value),
     Filter = [<<"(data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
-make_filter([{<<"metadata.", Field/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Value),
+make_filter([{<<"metadata.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_value(Field, Type, Value),
     Filter = [<<"(metadata @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
-
-%%%% Not indexed on CR
-%%make_filter([{<<"metadata.", _/binary>>=Field, exists, Bool, Value}|Rest], actors, Flavor, Acc) ->
-%%    Not = case Bool of true -> <<"NOT">>; false -> <<>> end,
-%%    Field2 = field_name(Field, Value),
-%%    Filter = [<<"(">>, Field2, <<" IS ">>, Not, <<" NULL)">>],
-%%    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{Field, _Op, _Val, object} | Rest], actors, Flavor, Acc) ->
     lager:warning("using invalid object operator at ~p: ~p", [?MODULE, Field]),
@@ -229,21 +197,6 @@ make_filter([{Field, exists, Bool, _}|Rest], actors, Flavor, Acc)
             [<<"(TRUE = FALSE)">>|Acc]
     end,
     make_filter(Rest, actors, Flavor, Acc2);
-
-%%make_filter([{Field, exists, Bool, _}|Rest], actors, Flavor, Acc) ->
-%%    Field2 = field_db_name(Field),
-%%    L = binary:split(Field2, <<".">>, [global]),
-%%    [Field3|Base1] = lists:reverse(L),
-%%    Base2 = nklib_util:bjoin(lists:reverse(Base1), $.),
-%%    Filter = [
-%%        case Bool of
-%%            true -> <<"(">>;
-%%            false -> <<"(NOT ">>
-%%        end,
-%%        field_name(Base2, json),
-%%        <<" ? ">>, quote(Field3), <<")">>
-%%    ],
-%%    make_filter(Rest, actors, Flavor, [list_to_binary(Filter)|Acc]);
 
 
 % NOT INDEXED for data, metadata using CR
@@ -457,9 +410,13 @@ finish_field_name(Type, Last, Acc) ->
 
 %% @private Generates a JSON based on a field
 %% make_json_spec(<<"a.b.c">>) = {"a":{"b":"c"}}
-field_value(Field, Value) ->
+field_value(Field, Type, Value) ->
     List = binary:split(Field, <<".">>, [global]),
-    Map = field_value(List++[Value]),
+    Value2 = case Type of
+        array -> [Value];
+        _ -> Value
+    end,
+    Map = field_value(List++[Value2]),
     nklib_json:encode(Map).
 
 
