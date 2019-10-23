@@ -54,8 +54,8 @@ init(SrvId, Tries) when Tries > 0 ->
                             ?LLOG(warning, "detected database at wrong version", []),
                             ok
                     end;
-                _ ->
-                    ?LLOG(error, "unrecognized database!", []),
+                O ->
+                    ?LLOG(error, "unrecognized database!: ~p", [O]),
                     {error, database_unrecognized}
             end;
         {error, field_unknown} ->
