@@ -40,7 +40,7 @@ init(SrvId, Tries) when Tries > 0 ->
         {ok, [Rows], _} ->
             case maps:from_list(Rows) of
                 #{
-                    <<"items">> := ActorsVsn,
+                    <<"actors">> := ActorsVsn,
                     <<"links">> := LinksVsn,
                     <<"labels">> := LabelsVsn,
                     <<"fts">> := FtsVsn,
