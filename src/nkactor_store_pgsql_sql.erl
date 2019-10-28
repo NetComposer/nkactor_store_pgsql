@@ -114,6 +114,11 @@ expand_filter([#{field:=Field, value:=Value}=Term|Rest], Acc) ->
             to_bin(Value);
         integer when Op==values, is_list(Value) ->
             [to_integer(V) || V <- Value];
+        string_null ->
+            case to_bin(Value) of
+                <<"null">> -> null;
+                Bin -> Bin
+            end;
         integer ->
             to_integer(Value);
         boolean when Op==values, is_list(Value) ->
@@ -179,6 +184,16 @@ make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor,
 make_filter([{<<"metadata.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_value(Field, Type, Value),
     Filter = [<<"(metadata @> '">>, Json, <<"')">>],
+    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"data.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_value(Field, Type, Value),
+    Filter = [<<"(NOT data @> '">>, Json, <<"')">>],
+    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"metadata.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_value(Field, Type, Value),
+    Filter = [<<"(NOT metadata @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{Field, _Op, _Val, object} | Rest], actors, Flavor, Acc) ->
@@ -400,6 +415,8 @@ finish_field_name(Type, Last, Acc) ->
         json ->
             Acc++[$', Last, $'];
         string ->
+            Acc++[$>, $', Last, $'];    % '>' finishes ->>
+        string_null ->
             Acc++[$>, $', Last, $'];    % '>' finishes ->>
         integer ->
             [$(|Acc] ++ [$>, $', Last, $', <<")::INTEGER">>];
