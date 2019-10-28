@@ -395,33 +395,35 @@ delete(SrvId, ActorId, Opts)  ->
 %% (because are other actors linking to it)
 
 delete_multi(SrvId, Ids, Opts) ->
-    do_delete_multi(SrvId, Ids, Opts, 0).
+    delete_multi(SrvId, Ids, Opts, 0, maps:get(max_iterations, Opts, 100)).
 
 
-%% @private
-do_delete_multi(SrvId, Ids, Opts, Count) ->
-    case do_delete_multi(SrvId, Ids, Opts, [], [], Count) of
-        {ok, [], [], Count2} ->
-            {ok, #{deleted => Count2}};
-        {ok, Deleted, NotDeleted, Count2} when length(Deleted) > 0 ->
-            do_delete_multi(SrvId, NotDeleted, Opts, Count2);
-        {ok, _, [NotDeleted|_], _Count2} ->
-            {error, {actor_not_deleted, NotDeleted}};
+delete_multi(SrvId, Ids, Opts, Count, Tries) when Tries > 0 ->
+    case do_delete_multi(SrvId, Ids, Opts, [], []) of
+        {ok, Deleted, []} ->
+            {ok, #{deleted=>Count+length(Deleted)}};
+        {ok, Deleted, NotDeleted} ->
+            delete_multi(SrvId, NotDeleted, Opts, Count+length(Deleted), Tries-1);
         {error, Error} ->
+            lager:warning("Delete_multi error: ~p", [Error]),
             {error, Error}
-    end.
+    end;
+
+delete_multi(_SrvId, _Ids, _Opts, _Count, _Tries) ->
+    {error, too_many_tries}.
+
 
 
 %% @private
-do_delete_multi(_SrvId, [], _Opts, Deleted, NotDeleted, Count) ->
-    {ok, Deleted, NotDeleted, Count};
+do_delete_multi(_SrvId, [], _Opts, Deleted, NotDeleted) ->
+    {ok, Deleted, NotDeleted};
 
-do_delete_multi(SrvId, [Id|Rest], Opts, Deleted, NotDeleted, Count) ->
+do_delete_multi(SrvId, [Id|Rest], Opts, Deleted, NotDeleted) ->
     case delete(SrvId, Id, Opts) of
         {ok, _} ->
-            do_delete_multi(SrvId, Rest, Opts, [Id|Deleted], NotDeleted, Count+1);
+            do_delete_multi(SrvId, Rest, Opts, [Id|Deleted], NotDeleted);
         {error, actor_has_linked_actors} ->
-            do_delete_multi(SrvId, Rest, Opts, Deleted, [Id|NotDeleted], Count);
+            do_delete_multi(SrvId, Rest, Opts, Deleted, [Id|NotDeleted]);
         {error, Error} ->
             {error, Error}
     end.
