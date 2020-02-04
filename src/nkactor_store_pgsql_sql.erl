@@ -282,7 +282,28 @@ get_op(Field, lt, Value) -> [Field, <<" < ">>, quote(Value)];
 get_op(Field, lte, Value) -> [Field, <<" <= ">>, quote(Value)];
 get_op(Field, gt, Value) -> [Field, <<" > ">>, quote(Value)];
 get_op(Field, gte, Value) -> [Field, <<" >= ">>, quote(Value)];
-get_op(_Field, exists, _Value) -> [<<"TRUE">>].
+get_op(_Field, exists, _Value) -> [<<"TRUE">>];
+get_op(Field, range, Value) ->
+    case binary:split(Value, <<"|">>) of
+        [V1, V2] ->
+            [
+                $(,
+                case V1 of
+                    <<"!", V1b/binary>> -> [Field, <<" > ">>, quote(V1b)];
+                    _ -> [Field, <<" >= ">>, quote(V1)]
+                end,
+                " ) AND ( ",
+                case V2 of
+                    <<"!", V2b/binary>> -> [Field, <<" < ">>, quote(V2b)];
+                    _ -> [Field, <<" <= ">>, quote(V2)]
+                end,
+                $)
+
+            ];
+        _ ->
+            get_op(Field, eq, Value)
+    end.
+
 
 
 %% @private
