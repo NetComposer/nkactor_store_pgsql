@@ -55,8 +55,7 @@ get_pgsql_srv(ActorSrvId) ->
     {error, {pgsql_error, nkpgsql:pgsql_error()}|term()}.
 
 query(SrvId, Query) ->
-    nkserver_ot:tag(?PGSQL_SPAN, sql, Query),
-    nkpgsql:query(SrvId, Query, #{}).
+    query(SrvId, Query, #{}).
 
 
 %% @doc Performs a query. Must use the PgSQL service
@@ -65,7 +64,8 @@ query(SrvId, Query) ->
     {error, {pgsql_error, nkpgsql:pgsql_error()}|term()}.
 
 query(SrvId, Query, QueryMeta) ->
-    nkserver_ot:tag(?PGSQL_SPAN, <<"pgsql.sql">>, Query),
+    nkserver_trace:log(info, "launch query"),
+    nkserver_trace:tags(#{sql=>Query}),
     nkpgsql:query(SrvId, Query, QueryMeta).
 
 

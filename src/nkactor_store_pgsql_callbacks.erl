@@ -159,21 +159,22 @@ actor_db_search(SrvId, Type, Opts) ->
         undefined ->
             continue;
         PgSrvId ->
-            start_span(PgSrvId, <<"search">>, Opts),
-            Result = case nkactor_store_pgsql_search:search(Type, Opts) of
-                {query, Query, Fun} ->
-                    Opts2 = #{result_fun=>Fun, nkactor_params=>Opts},
-                    case nkactor_store_pgsql:query(PgSrvId, Query, Opts2) of
-                        {ok, ActorList, Meta} ->
-                            parse_actors(ActorList, SrvId, Meta, Opts, []);
-                        {error, Error} ->
-                            {error, Error}
-                    end;
-                {error, Error} ->
-                    {error, Error}
+            Fun = fun() ->
+                Result = case nkactor_store_pgsql_search:search(Type, Opts) of
+                    {query, Query, Fun} ->
+                        Opts2 = #{result_fun=>Fun, nkactor_params=>Opts},
+                        case nkactor_store_pgsql:query(PgSrvId, Query, Opts2) of
+                            {ok, ActorList, Meta} ->
+                                parse_actors(ActorList, SrvId, Meta, Opts, []);
+                            {error, Error} ->
+                                {error, Error}
+                        end;
+                    {error, Error} ->
+                        {error, Error}
+                end,
+                reply(Result)
             end,
-            stop_span(),
-            reply(Result)
+            trace_new(SrvId, PgSrvId, <<"search">>, Fun)
     end.
 
 
@@ -186,15 +187,16 @@ actor_db_aggregate(SrvId, Type, Opts) ->
         undefined ->
             continue;
         PgSrvId ->
-            start_span(PgSrvId, <<"aggregate">>, Opts),
-            Result = case nkactor_store_pgsql_aggregation:aggregation(Type, Opts) of
-                {query, Query, Fun} ->
-                    nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun});
-                {error, Error} ->
-                    {error, Error}
+            Fun = fun() ->
+                Result = case nkactor_store_pgsql_aggregation:aggregation(Type, Opts) of
+                    {query, Query, Fun} ->
+                        nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun});
+                    {error, Error} ->
+                        {error, Error}
+                end,
+                reply(Result)
             end,
-            stop_span(),
-            reply(Result)
+            trace_new(SrvId, PgSrvId, <<"aggregate">>, Fun)
     end.
 
 
@@ -222,27 +224,30 @@ call(SrvId, Op, Arg, Opts) ->
         undefined ->
             continue;
         PgSrvId ->
-            start_span(PgSrvId, Op, Opts),
-            Reply = nkactor_store_pgsql_actors:Op(PgSrvId, Arg, Opts),
-            stop_span(),
-            reply(Reply)
+            Fun = fun() ->
+                Reply = nkactor_store_pgsql_actors:Op(PgSrvId, Arg, Opts),
+                reply(Reply)
+            end,
+            trace_new(SrvId, PgSrvId, Op, Fun)
     end.
 
 
-%% @private
-start_span(SrvId, Op, Opts) ->
-    ParentSpan = maps:get(ot_span_id, Opts, undefined),
-    SpanName = <<"PGSQL::", (nklib_util:to_binary(Op))/binary>>,
-    nkserver_ot:new(?PGSQL_SPAN, SrvId, SpanName, ParentSpan).
-
 
 %% @private
-stop_span() ->
-    nkserver_ot:finish(?PGSQL_SPAN).
+trace_new(SrvId, PgSrvId, Op, Fun) ->
+    Name = <<"ActorPgSQL::", (nklib_util:to_binary(Op))/binary>>,
+    Opts = #{
+        metadata => #{
+            srv => PgSrvId,
+            app => PgSrvId
+        }
+    },
+    nkserver_trace:new(SrvId, Name, Fun, Opts).
 
 
 %% @doc
 parse_actor(SrvId, RawActor, Meta, Opts) ->
+    nkserver_trace:log(info, "parsing actors"),
     case nkactor_syntax:parse_actor(RawActor, #{}) of
         {ok, Actor} ->
             ?CALL_SRV(SrvId, actor_store_pgsql_parse, [SrvId, Actor, Meta, Opts]);
