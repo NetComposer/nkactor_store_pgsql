@@ -92,7 +92,13 @@ actor_db_init(_SrvId) ->
     {ok, actor_id(), Meta::map()} | {error, actor_not_found|term()} | continue().
 
 actor_db_find(SrvId, ActorId, Opts) ->
-    call(SrvId, find, ActorId, Opts).
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            Fun = fun() -> nkactor_store_pgsql_actors:find(PgSrvId, ActorId, Opts) end,
+            trace_new(SrvId, PgSrvId, find, Fun)
+    end.
 
 
 %% @doc Must find and read a full actor on disk by UID (if available) or name
@@ -100,11 +106,19 @@ actor_db_find(SrvId, ActorId, Opts) ->
     {ok, nkactor:actor(), Meta::map()} | {error, actor_not_found|term()} | continue().
 
 actor_db_read(SrvId, ActorId, Opts) ->
-    case call(SrvId, read, ActorId, Opts) of
-        {ok, RawActor, Meta} ->
-            parse_actor(SrvId, RawActor, Meta, Opts);
-        {error, Error} ->
-            {error, Error}
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            Fun = fun() ->
+                case nkactor_store_pgsql_actors:read(PgSrvId, ActorId, Opts) of
+                    {ok, RawActor, Meta} ->
+                        parse_actor(SrvId, RawActor, Meta, Opts);
+                    {error, Error} ->
+                        {error, Error}
+                end
+            end,
+            trace_new(SrvId, PgSrvId, read, Fun)
     end.
 
 
@@ -113,11 +127,21 @@ actor_db_read(SrvId, ActorId, Opts) ->
     {ok, Meta::map()} | {error, uniqueness_violation|term()} | continue().
 
 actor_db_create(SrvId, Actor, Opts) ->
-    case ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, Actor, Opts]) of
-        {ok, Actor2} ->
-            call(SrvId, create, Actor2, Opts);
-        {error, Error} ->
-            {error, Error}
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            Fun = fun() ->
+                case
+                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, Actor, Opts])
+                of
+                    {ok, Actor2} ->
+                        nkactor_store_pgsql_actors:create(PgSrvId, Actor2, Opts);
+                    {error, Error} ->
+                        {error, Error}
+                end
+            end,
+            trace_new(SrvId, PgSrvId, create, Fun)
     end.
 
 
@@ -126,11 +150,21 @@ actor_db_create(SrvId, Actor, Opts) ->
     {ok, Meta::map()} | {error, term()} | continue().
 
 actor_db_update(SrvId, Actor, Opts) ->
-    case ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, update, Actor, Opts]) of
-        {ok, Actor2} ->
-            call(SrvId, update, Actor2, Opts);
-        {error, Error} ->
-            {error, Error}
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            Fun = fun() ->
+                case
+                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, update, Actor, Opts])
+                of
+                    {ok, Actor2} ->
+                        nkactor_store_pgsql_actors:update(PgSrvId, Actor2, Opts);
+                    {error, Error} ->
+                        {error, Error}
+                end
+            end,
+            trace_new(SrvId, PgSrvId, update, Fun)
     end.
 
 
@@ -139,7 +173,13 @@ actor_db_update(SrvId, Actor, Opts) ->
     {ok, Meta::map()} | {error, term()} | continue().
 
 actor_db_delete(SrvId, ActorId, Opts) ->
-    call(SrvId, delete, ActorId, Opts).
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            Fun = fun() -> nkactor_store_pgsql_actors:delete(PgSrvId, ActorId, Opts) end,
+            trace_new(SrvId, PgSrvId, delete, Fun)
+    end.
 
 
 %% @doc
@@ -147,7 +187,13 @@ actor_db_delete(SrvId, ActorId, Opts) ->
     {ok, #{deleted:=integer()}} | {error, term()} | continue().
 
 actor_db_delete_multi(SrvId, ActorIds, Opts) ->
-    call(SrvId, delete_multi, ActorIds, Opts).
+    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
+        undefined ->
+            continue;
+        PgSrvId ->
+            Fun = fun() -> nkactor_store_pgsql_actors:delete_multi(PgSrvId, ActorIds, Opts) end,
+            trace_new(SrvId, PgSrvId, delete_multi, Fun)
+    end.
 
 
 %% @doc
@@ -160,7 +206,7 @@ actor_db_search(SrvId, Type, Opts) ->
             continue;
         PgSrvId ->
             Fun = fun() ->
-                Result = case nkactor_store_pgsql_search:search(Type, Opts) of
+                case nkactor_store_pgsql_search:search(Type, Opts) of
                     {query, Query, Fun} ->
                         Opts2 = #{result_fun=>Fun, nkactor_params=>Opts},
                         case nkactor_store_pgsql:query(PgSrvId, Query, Opts2) of
@@ -171,8 +217,7 @@ actor_db_search(SrvId, Type, Opts) ->
                         end;
                     {error, Error} ->
                         {error, Error}
-                end,
-                reply(Result)
+                end
             end,
             trace_new(SrvId, PgSrvId, <<"search">>, Fun)
     end.
@@ -188,13 +233,12 @@ actor_db_aggregate(SrvId, Type, Opts) ->
             continue;
         PgSrvId ->
             Fun = fun() ->
-                Result = case nkactor_store_pgsql_aggregation:aggregation(Type, Opts) of
+                case nkactor_store_pgsql_aggregation:aggregation(Type, Opts) of
                     {query, Query, Fun} ->
                         nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun});
                     {error, Error} ->
                         {error, Error}
-                end,
-                reply(Result)
+                end
             end,
             trace_new(SrvId, PgSrvId, <<"aggregate">>, Fun)
     end.
@@ -218,36 +262,24 @@ actor_db_truncate(SrvId, _Opts) ->
 %% Internal
 %% ===================================================================
 
-%% @private
-call(SrvId, Op, Arg, Opts) ->
-    case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
-        undefined ->
-            continue;
-        PgSrvId ->
-            Fun = fun() ->
-                Reply = nkactor_store_pgsql_actors:Op(PgSrvId, Arg, Opts),
-                reply(Reply)
-            end,
-            trace_new(SrvId, PgSrvId, Op, Fun)
-    end.
-
-
 
 %% @private
 trace_new(SrvId, PgSrvId, Op, Fun) ->
     Name = <<"ActorPgSQL::", (nklib_util:to_binary(Op))/binary>>,
     Opts = #{
         metadata => #{
-            srv => PgSrvId,
-            app => PgSrvId
+            app => PgSrvId,
+            group => actor_store_pgsql,
+            resource => Op
         }
     },
-    nkserver_trace:new(SrvId, Name, Fun, Opts).
+    Fun2 = fun() -> reply(Fun()) end,
+    nkserver_trace:new(SrvId, Name, Fun2, Opts).
 
 
 %% @doc
 parse_actor(SrvId, RawActor, Meta, Opts) ->
-    nkserver_trace:log(info, "parsing actors"),
+    nkserver_trace:trace("parsing actors"),
     case nkactor_syntax:parse_actor(RawActor, #{}) of
         {ok, Actor} ->
             ?CALL_SRV(SrvId, actor_store_pgsql_parse, [SrvId, Actor, Meta, Opts]);
@@ -274,6 +306,10 @@ parse_actors([Other|Rest], SrvId, Meta, Opts, Acc) ->
 
 
 %% @private
+reply({ok, Data, Meta}) ->
+    nkserver_trace:trace("result: ~p", [Meta]),
+    {ok, Data, Meta};
+
 reply({error, Error}) when
     Error == duplicated_name;
     Error == actor_has_linked_actors;
@@ -282,9 +318,9 @@ reply({error, Error}) when
     {error, Error};
 
 reply({error, Error}) ->
-    {error, {pgsql_error, Error}};
+    nkserver_trace:log(notice, "PgSSQL error: ~p", [Error]),
+    nkserver_trace:error(Error),
+    {error, {pgsql_error, Error}}.
 
-reply(Other) ->
-    Other.
 
 
