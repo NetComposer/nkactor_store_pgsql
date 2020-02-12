@@ -307,8 +307,12 @@ parse_actors([Other|Rest], SrvId, Meta, Opts, Acc) ->
 
 %% @private
 reply({ok, Data, Meta}) ->
-    nkserver_trace:trace("result: ~p", [Meta]),
+    nkserver_trace:event(query_result, #{}),
     {ok, Data, Meta};
+
+reply({ok, Meta}) ->
+    nkserver_trace:event(query_result, #{}),
+    {ok, Meta};
 
 reply({error, Error}) when
     Error == duplicated_name;
@@ -318,7 +322,7 @@ reply({error, Error}) when
     {error, Error};
 
 reply({error, Error}) ->
-    nkserver_trace:log(notice, "PgSSQL error: ~p", [Error]),
+    nkserver_trace:log(notice, "PgSQL error: ~p", [Error]),
     nkserver_trace:error(Error),
     {error, {pgsql_error, Error}}.
 

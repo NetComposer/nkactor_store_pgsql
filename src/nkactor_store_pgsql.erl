@@ -64,7 +64,7 @@ query(SrvId, Query) ->
     {error, {pgsql_error, nkpgsql:pgsql_error()}|term()}.
 
 query(SrvId, Query, QueryMeta) ->
-    nkserver_trace:event(sql_query, #{sql=>Query}),
+    nkserver_trace:event(sql_query, #{sql=>list_to_binary([Query])}),
     nkpgsql:query(SrvId, Query, QueryMeta).
 
 
