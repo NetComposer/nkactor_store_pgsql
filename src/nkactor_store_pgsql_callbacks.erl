@@ -97,7 +97,7 @@ actor_db_find(SrvId, ActorId, Opts) ->
             continue;
         PgSrvId ->
             Fun = fun() -> nkactor_store_pgsql_actors:find(PgSrvId, ActorId, Opts) end,
-            trace_new(SrvId, PgSrvId, find, Fun)
+            new_span(SrvId, PgSrvId, find, Fun)
     end.
 
 
@@ -118,7 +118,7 @@ actor_db_read(SrvId, ActorId, Opts) ->
                         {error, Error}
                 end
             end,
-            trace_new(SrvId, PgSrvId, read, Fun)
+            new_span(SrvId, PgSrvId, read, Fun)
     end.
 
 
@@ -141,7 +141,7 @@ actor_db_create(SrvId, Actor, Opts) ->
                         {error, Error}
                 end
             end,
-            trace_new(SrvId, PgSrvId, create, Fun)
+            new_span(SrvId, PgSrvId, create, Fun)
     end.
 
 
@@ -164,7 +164,7 @@ actor_db_update(SrvId, Actor, Opts) ->
                         {error, Error}
                 end
             end,
-            trace_new(SrvId, PgSrvId, update, Fun)
+            new_span(SrvId, PgSrvId, update, Fun)
     end.
 
 
@@ -178,7 +178,7 @@ actor_db_delete(SrvId, ActorId, Opts) ->
             continue;
         PgSrvId ->
             Fun = fun() -> nkactor_store_pgsql_actors:delete(PgSrvId, ActorId, Opts) end,
-            trace_new(SrvId, PgSrvId, delete, Fun)
+            new_span(SrvId, PgSrvId, delete, Fun)
     end.
 
 
@@ -192,7 +192,7 @@ actor_db_delete_multi(SrvId, ActorIds, Opts) ->
             continue;
         PgSrvId ->
             Fun = fun() -> nkactor_store_pgsql_actors:delete_multi(PgSrvId, ActorIds, Opts) end,
-            trace_new(SrvId, PgSrvId, delete_multi, Fun)
+            new_span(SrvId, PgSrvId, delete_multi, Fun)
     end.
 
 
@@ -219,7 +219,7 @@ actor_db_search(SrvId, Type, Opts) ->
                         {error, Error}
                 end
             end,
-            trace_new(SrvId, PgSrvId, <<"search">>, Fun)
+            new_span(SrvId, PgSrvId, <<"search">>, Fun)
     end.
 
 
@@ -240,7 +240,7 @@ actor_db_aggregate(SrvId, Type, Opts) ->
                         {error, Error}
                 end
             end,
-            trace_new(SrvId, PgSrvId, <<"aggregate">>, Fun)
+            new_span(SrvId, PgSrvId, <<"aggregate">>, Fun)
     end.
 
 
@@ -264,7 +264,7 @@ actor_db_truncate(SrvId, _Opts) ->
 
 
 %% @private
-trace_new(SrvId, PgSrvId, Op, Fun) ->
+new_span(SrvId, PgSrvId, Op, Fun) ->
     Name = <<"ActorPgSQL::", (nklib_util:to_binary(Op))/binary>>,
     Opts = #{
         metadata => #{
@@ -274,7 +274,7 @@ trace_new(SrvId, PgSrvId, Op, Fun) ->
         }
     },
     Fun2 = fun() -> reply(Fun()) end,
-    nkserver_trace:new(SrvId, Name, Fun2, Opts).
+    nkserver_trace:new_span(SrvId, Name, Fun2, Opts).
 
 
 %% @doc
