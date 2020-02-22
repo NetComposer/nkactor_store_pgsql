@@ -300,10 +300,12 @@ parse_actors([Other|Rest], SrvId, Meta, Opts, Acc) ->
 
 %% @private
 reply({ok, Data, Meta}) ->
-    nkserver_trace:event(query_result, #{}),
+    nkserver_trace:log(debug, "Result: ~p", [Data]),
+    nkserver_trace:event(query_result, maps:with([size], Meta)),
     {ok, Data, Meta};
 
 reply({ok, Meta}) ->
+    nkserver_trace:log(debug, "Result: ~p", [Meta]),
     nkserver_trace:event(query_result, #{}),
     {ok, Meta};
 
