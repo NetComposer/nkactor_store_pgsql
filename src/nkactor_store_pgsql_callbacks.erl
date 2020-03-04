@@ -272,7 +272,7 @@ new_span(SrvId, PgSrvId, Op, Fun) ->
 
 %% @doc
 parse_actor(SrvId, RawActor, Meta, Opts) ->
-    nkserver_trace:trace("query completed; parsing actors"),
+    nkserver_trace:log(debug, "query completed; parsing actors"),
     case nkactor_syntax:parse_actor(RawActor, #{}) of
         {ok, Actor} ->
             ?CALL_SRV(SrvId, actor_store_pgsql_parse, [SrvId, Actor, Meta, Opts]);
@@ -300,13 +300,12 @@ parse_actors([Other|Rest], SrvId, Meta, Opts, Acc) ->
 
 %% @private
 reply({ok, Data, Meta}) ->
-    nkserver_trace:log(debug, "Result: ~p", [Data]),
-    nkserver_trace:event(query_result, maps:with([size], Meta)),
+    nkserver_trace:log(info, "meta: ~p", [maps:with([size], Meta)]),
+    nkserver_trace:log(debug, "result: ~p", [Data]),
     {ok, Data, Meta};
 
 reply({ok, Meta}) ->
-    nkserver_trace:log(debug, "Result: ~p", [Meta]),
-    nkserver_trace:event(query_result, #{}),
+    nkserver_trace:log(info, "meta: ~p", [maps:with([size], Meta)]),
     {ok, Meta};
 
 reply({error, Error}) when
