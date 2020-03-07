@@ -267,7 +267,7 @@ actor_db_truncate(SrvId, _Opts) ->
 new_span(SrvId, PgSrvId, Op, Fun) ->
     Opts = #{pg_srv => PgSrvId },
     Fun2 = fun() -> reply(Fun()) end,
-    nkserver_trace:new_span(SrvId, {nkactor_store_pgsql, Op}, Fun2, Opts).
+    nkserver_trace:new_span(SrvId, {trace_nkactor_store_pgsql, Op}, Fun2, Opts).
 
 
 %% @doc
