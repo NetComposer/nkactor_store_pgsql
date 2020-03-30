@@ -48,11 +48,11 @@ actor_store_pgsql_parse(_SrvId, Actor, Meta, _Opts) ->
 
 
 %% @doc Called before saving the actor, to process further serializations
--spec actor_store_pgsql_unparse(nkserver:id(), nkactor:actor(), create|updated, db_opts()) ->
-    {ok, nkactor:actor()} | {error, term()}.
+-spec actor_store_pgsql_unparse(nkserver:id(), [nkactor:actor()], create|updated, db_opts()) ->
+    {ok, [nkactor:actor()]} | {error, term()}.
 
-actor_store_pgsql_unparse(_SrvId, _Op, Actor, _Opts) ->
-    {ok, Actor}.
+actor_store_pgsql_unparse(_SrvId, _Op, Actors, _Opts) ->
+    {ok, Actors}.
 
 
 
@@ -133,9 +133,9 @@ actor_db_create(SrvId, Actor, Opts) ->
         PgSrvId ->
             Fun = fun() ->
                 case
-                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, Actor, Opts])
+                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, [Actor], Opts])
                 of
-                    {ok, Actor2} ->
+                    {ok, [Actor2]} ->
                         nkactor_store_pgsql_actors:create(PgSrvId, Actor2, Opts);
                     {error, Error} ->
                         {error, Error}
@@ -146,26 +146,30 @@ actor_db_create(SrvId, Actor, Opts) ->
 
 
 %% @doc Must update a new actor on disk.
--spec actor_db_update(id(), actor(), db_opts()) ->
+-spec actor_db_update(id(), actor()|[actor()], db_opts()) ->
     {ok, Meta::map()} | {error, term()} | continue().
 
-actor_db_update(SrvId, Actor, Opts) ->
+actor_db_update(SrvId, Actors, Opts) when is_list(Actors) ->
     case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
         undefined ->
             continue;
         PgSrvId ->
             Fun = fun() ->
                 case
-                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, update, Actor, Opts])
+                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, update, Actors, Opts])
                 of
-                    {ok, Actor2} ->
-                        nkactor_store_pgsql_actors:update(PgSrvId, Actor2, Opts);
+                    {ok, Actors2} ->
+                        nkactor_store_pgsql_actors:update(PgSrvId, Actors2, Opts);
                     {error, Error} ->
                         {error, Error}
                 end
             end,
             new_span(SrvId, PgSrvId, update, Fun)
-    end.
+    end;
+
+    actor_db_update(SrvId, Actor, Opts) ->
+        actor_db_update(SrvId, [Actor], Opts).
+
 
 
 %% @doc
