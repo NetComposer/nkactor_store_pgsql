@@ -123,20 +123,20 @@ actor_db_read(SrvId, ActorId, Opts) ->
 
 
 %% @doc Must create a new actor on disk. Should fail if already present
--spec actor_db_create(id(), actor(), db_opts()) ->
+-spec actor_db_create(id(), actor()|[actor()], db_opts()) ->
     {ok, Meta::map()} | {error, uniqueness_violation|term()} | continue().
 
-actor_db_create(SrvId, Actor, Opts) ->
+actor_db_create(SrvId, Actors, Opts) ->
     case nkactor_store_pgsql:get_pgsql_srv(SrvId) of
         undefined ->
             continue;
         PgSrvId ->
             Fun = fun() ->
                 case
-                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, [Actor], Opts])
+                    ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, Actors, Opts])
                 of
-                    {ok, [Actor2]} ->
-                        nkactor_store_pgsql_actors:create(PgSrvId, Actor2, Opts);
+                    {ok, Actors2} ->
+                        nkactor_store_pgsql_actors:create(PgSrvId, Actors2, Opts);
                     {error, Error} ->
                         {error, Error}
                 end
