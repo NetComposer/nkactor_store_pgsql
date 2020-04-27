@@ -110,6 +110,8 @@ expand_filter([#{field:=Field, value:=Value}=Term|Rest], Acc) ->
             to_boolean(Value);
         string when Op==values, is_list(Value) ->
             [to_bin(V) || V <- Value];
+        array when Op==values, is_list(Value) ->
+            [to_bin(V) || V <- Value];
         string ->
             to_bin(Value);
         integer when Op==values, is_list(Value) ->
@@ -180,6 +182,17 @@ make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor,
     Json = field_value(Field, Type, Value),
     Filter = [<<"(data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Flavor, Acc) ->
+    Filters1 = lists:foldl(
+        fun(V, A) ->
+            Json = field_value(Field, Type, V),
+            [list_to_binary([<<"(data @> '">>, Json, <<"')">>]) | A]
+        end,
+        [],
+        Values),
+    Filters2 = nklib_util:bjoin(Filters1, <<" OR ">>),
+    make_filter(Rest, actors, Flavor, [Filters2 | Acc]);
 
 make_filter([{<<"metadata.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_value(Field, Type, Value),
@@ -438,6 +451,8 @@ finish_field_name(Type, Last, Acc) ->
         string ->
             Acc++[$>, $', Last, $'];    % '>' finishes ->>
         string_null ->
+            Acc++[$>, $', Last, $'];    % '>' finishes ->>
+        array ->
             Acc++[$>, $', Last, $'];    % '>' finishes ->>
         integer ->
             [$(|Acc] ++ [$>, $', Last, $', <<")::INTEGER">>];
