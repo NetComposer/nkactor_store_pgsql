@@ -192,7 +192,7 @@ make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Fl
         [],
         Values),
     Filters2 = nklib_util:bjoin(Filters1, <<" OR ">>),
-    make_filter(Rest, actors, Flavor, [Filters2 | Acc]);
+    make_filter(Rest, actors, Flavor, [<<$(, Filters2/binary, $)>> | Acc]);
 
 make_filter([{<<"metadata.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_value(Field, Type, Value),
