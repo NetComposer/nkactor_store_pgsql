@@ -178,22 +178,6 @@ make_filter([{<<"metadata.is_enabled">>, eq, false, boolean}|Rest], actors, Flav
     Filter = <<"(metadata @> '{\"is_enabled\":false}')">>,
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
 
-make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_nested_json(Field, Type, Value),
-    Filter = [<<"(data @> '">>, Json, <<"')">>],
-    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
-
-make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Flavor, Acc) ->
-    Filters1 = lists:foldl(
-        fun(V, A) ->
-            Json = field_nested_json(Field, Type, V),
-            [list_to_binary([<<"(data @> '">>, Json, <<"')">>]) | A]
-        end,
-        [],
-        Values),
-    Filters2 = nklib_util:bjoin(Filters1, <<" OR ">>),
-    make_filter(Rest, actors, Flavor, [<<$(, Filters2/binary, $)>> | Acc]);
-
 % Direct eq or ne filters in JSON produce @> syntax, that uses index
 % Other operations use -> ->> syntax, more flexible
 make_filter([{<<"metadata.labels.", Label/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
@@ -226,6 +210,17 @@ make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor,
     Json = field_nested_json(Field, Type, Value),
     Filter = [<<"(data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Flavor, Acc) ->
+    Filters1 = lists:foldl(
+        fun(V, A) ->
+            Json = field_nested_json(Field, Type, V),
+            [list_to_binary([<<"(data @> '">>, Json, <<"')">>]) | A]
+        end,
+        [],
+        Values),
+    Filters2 = nklib_util:bjoin(Filters1, <<" OR ">>),
+    make_filter(Rest, actors, Flavor, [<<$(, Filters2/binary, $)>> | Acc]);
 
 make_filter([{<<"data.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_nested_json(Field, Type, Value),
