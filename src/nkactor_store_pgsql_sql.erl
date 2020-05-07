@@ -22,7 +22,7 @@
 %% @doc SQL utilities for stores to use
 -module(nkactor_store_pgsql_sql).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([select/2, filters/2, sort/2, field_name/2]).
+-export([select/2, filters/2, sort/2]).
 -import(nkactor_store_pgsql, [quote/1, filter_path/2]).
 
 -include_lib("nkactor/include/nkactor.hrl").
@@ -179,14 +179,14 @@ make_filter([{<<"metadata.is_enabled">>, eq, false, boolean}|Rest], actors, Flav
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
 
 make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
+    Json = field_nested_json(Field, Type, Value),
     Filter = [<<"(data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Flavor, Acc) ->
     Filters1 = lists:foldl(
         fun(V, A) ->
-            Json = field_value(Field, Type, V),
+            Json = field_nested_json(Field, Type, V),
             [list_to_binary([<<"(data @> '">>, Json, <<"')">>]) | A]
         end,
         [],
@@ -194,19 +194,42 @@ make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Fl
     Filters2 = nklib_util:bjoin(Filters1, <<" OR ">>),
     make_filter(Rest, actors, Flavor, [<<$(, Filters2/binary, $)>> | Acc]);
 
+% Direct eq or ne filters in JSON produce @> syntax, that uses index
+% Other operations use -> ->> syntax, more flexible
+make_filter([{<<"metadata.labels.", Label/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
+
+make_filter([{<<"metadata.labels.", Label/binary>>, ne, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(NOT metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
+
+make_filter([{<<"metadata.annotations.", Label/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
+
+make_filter([{<<"metadata.annotations.", Label/binary>>, ne, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(NOT metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
+
 make_filter([{<<"metadata.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
+    Json = field_nested_json(Field, Type, Value),
     Filter = [<<"(metadata @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
-make_filter([{<<"data.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
-    Filter = [<<"(NOT data @> '">>, Json, <<"')">>],
+make_filter([{<<"metadata.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_nested_json(Field, Type, Value),
+    Filter = [<<"(NOT metadata @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
-make_filter([{<<"metadata.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
-    Filter = [<<"(NOT metadata @> '">>, Json, <<"')">>],
+make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_nested_json(Field, Type, Value),
+    Filter = [<<"(data @> '">>, Json, <<"')">>],
+    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"data.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_nested_json(Field, Type, Value),
+    Filter = [<<"(NOT data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{Field, _Op, _Val, object} | Rest], actors, Flavor, Acc) ->
@@ -463,7 +486,7 @@ finish_field_name(Type, Last, Acc) ->
 
 %% @private Generates a JSON based on a field
 %% make_json_spec(<<"a.b.c">>) = {"a":{"b":"c"}}
-field_value(Field, Type, Value) ->
+field_nested_json(Field, Type, Value) ->
     List = binary:split(Field, <<".">>, [global]),
     Value2 = case Type of
         array -> [Value];
