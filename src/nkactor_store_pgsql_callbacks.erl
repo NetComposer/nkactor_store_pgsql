@@ -24,7 +24,7 @@
 
 
 -export([actor_store_pgsql_parse/4, actor_store_pgsql_unparse/4]).
--export([status/1]).
+-export([status/1, parse_actors/5, new_span/4]).
 -export([actor_db_init/1,
          actor_db_find/3, actor_db_read/3, actor_db_create/3, actor_db_update/3,
          actor_db_delete/3, actor_db_delete_multi/3, actor_db_search/3, actor_db_aggregate/3,
