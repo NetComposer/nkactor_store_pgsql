@@ -23,7 +23,7 @@
 -module(nkactor_store_pgsql_sql).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([select/2, select2/1, filters/2, sort/2]).
--import(nkactor_store_pgsql, [quote/1, filter_path/2]).
+-import(nkactor_store_pgsql, [quote/1, filter_path/1]).
 
 -include_lib("nkactor/include/nkactor.hrl").
 
@@ -94,7 +94,7 @@ select2(Params) ->
 
 
 %% @private
-filters(#{namespace:=Namespace}=Params, Table) ->
+filters(Params, Table) ->
     Flavor = maps:get(flavor, Params, #{}),
     Filters = maps:get(filter, Params, #{}),
     AndFilters1 = expand_filter(maps:get('and', Filters, []), []),
@@ -116,8 +116,7 @@ filters(#{namespace:=Namespace}=Params, Table) ->
         _ ->
             [<<"(NOT ", F/binary, ")">> || F <- NotFilters2]
     end,
-    Deep = maps:get(deep, Params, false),
-    PathFilter = list_to_binary(filter_path(Namespace, Deep)),
+    PathFilter = list_to_binary(filter_path(Params)),
     FilterList = [PathFilter | AndFilters2 ++ OrFilters4 ++ NotFilters3],
     Where = nklib_util:bjoin(FilterList, <<" AND ">>),
     [<<" WHERE ">>, Where].

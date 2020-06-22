@@ -22,7 +22,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([get_pgsql_srv/1]).
 -export([query/2, query/3]).
--export([quote/1, filter_path/2]).
+-export([quote/1, filter_path/1]).
 -export_type([result_fun/0]).
 
 -include("nkactor_store_pgsql.hrl").
@@ -87,17 +87,27 @@ quote(Term) ->
     nkpgsql_util:quote(Term).
 
 
+filter_path(Opts) ->
+    Namespace = maps:get(namespace, Opts, <<>>),
+    Deep = maps:get(deep, Opts, false),
+    filter_path(Namespace, Deep, Opts).
+
+
 %% @private
-filter_path(<<>>, true) ->
+filter_path(<<>>, true, _Opts) ->
     [<<"TRUE">>];
 
-filter_path(Namespace, Deep) ->
+filter_path(Namespace, Deep, Opts) ->
     Path = nkactor_lib:make_rev_path(Namespace),
+    Field = case Opts of
+        #{use_labels:=true} -> <<"labels.path">>;
+        _ -> <<"actors.path">>
+    end,
     case Deep of
         true ->
-            [<<"(path LIKE ">>, quote(<<Path/binary, "%">>), <<")">>];
+            [<<"(", Field/binary, " LIKE ">>, quote(<<Path/binary, "%">>), <<")">>];
         false ->
-            [<<"(path = ">>, quote(Path), <<")">>]
+            [<<"(", Field/binary, " = ">>, quote(Path), <<")">>]
     end.
 
 

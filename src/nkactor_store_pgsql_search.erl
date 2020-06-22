@@ -22,7 +22,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([search/2]).
 -export([pgsql_actors/2, pgsql_actors_count/2, pgsql_labels/2, pgsql_delete/2, pgsql_any/2]).
--import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/2]).
+-import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/1]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
 
@@ -37,8 +37,6 @@
 search(actors_search_linked, Params) ->
     UID = maps:get(uid, Params),
     LinkType = maps:get(link_type, Params, any),
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     From = maps:get(from, Params, 0),
     Limit = maps:get(size, Params, 100),
     Query = [
@@ -50,7 +48,7 @@ search(actors_search_linked, Params) ->
             _ ->
                 [<<" AND link_type=">>, quote(LinkType)]
         end,
-        <<" AND ">>, filter_path(Namespace, Deep),
+        <<" AND ">>, filter_path(Params),
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Limit),
         <<";">>
     ],
@@ -68,8 +66,6 @@ search(actors_search_linked, Params) ->
 search(actors_search_fts, Params) ->
     Word = maps:get(word, Params),
     Field = maps:get(field, Params, any),
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     From = maps:get(from, Params, 0),
     Limit = maps:get(size, Params, 100),
     Word2 = nklib_parse:normalize(Word, #{unrecognized=>keep}),
@@ -82,7 +78,7 @@ search(actors_search_fts, Params) ->
     end,
     Query = [
         <<"SELECT uid FROM fts">>,
-        <<" WHERE ">>, Filter, <<" AND ">>, filter_path(Namespace, Deep),
+        <<" WHERE ">>, Filter, <<" AND ">>, filter_path(Params),
         case Field of
             any ->
                 [];
@@ -191,13 +187,11 @@ search(actors_delete_old, Params) ->
     Group = maps:get(group, Params),
     Res = maps:get(resource, Params),
     Epoch = maps:get(epoch, params),
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     Query = [
         <<"DELETE FROM actors">>,
         <<" WHERE \"group\"=">>, quote(Group), <<" AND resource=">>, quote(Res),
         <<" AND last_update<">>, quote(Epoch),
-        <<" AND ">>, filter_path(Namespace, Deep),
+        <<" AND ">>, filter_path(Params),
         <<";">>
     ],
     {query, Query, fun pgsql_delete/2};
