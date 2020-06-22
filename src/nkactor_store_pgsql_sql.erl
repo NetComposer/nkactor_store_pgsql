@@ -22,7 +22,7 @@
 %% @doc SQL utilities for stores to use
 -module(nkactor_store_pgsql_sql).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([select/2, filters/2, sort/2]).
+-export([select/2, select2/1, filters/2, sort/2]).
 -import(nkactor_store_pgsql, [quote/1, filter_path/2]).
 
 -include_lib("nkactor/include/nkactor.hrl").
@@ -60,6 +60,31 @@ select(#{only_uid:=true}, labels) ->
 
 select(_Params, labels) ->
     <<"SELECT uid,label_key,label_value FROM labels">>.
+
+
+
+%% @private
+select2(#{only_uid:=true}) ->
+    <<"actors.uid">>;
+
+select2(Params) ->
+    [
+        <<"actors.uid,actors.namespace,actors.group,actors.resource,actors.name">>,
+        case maps:get(get_metadata, Params, false) of
+            true ->
+                <<",actors.metadata">>;
+            false ->
+                []
+        end,
+        case maps:get(get_data, Params, false) of
+            true ->
+                <<",actors.data">>;
+            false ->
+                []
+        end
+    ].
+
+
 
 
 
@@ -142,7 +167,7 @@ make_filter([], _Table, _Flavor, Acc) ->
 
 make_filter([{<<"group+resource">>, eq, Val, string} | Rest], actors, Flavor, Acc) ->
     [Group, Type] = binary:split(Val, <<"+">>),
-    Filter = <<"(\"group\"='", Group/binary, "' AND resource='", Type/binary, "')">>,
+    Filter = <<"(\"actors.group\"='", Group/binary, "' AND actors.resource='", Type/binary, "')">>,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.fts.", Field/binary>>, Op, Val, string} | Rest], actors, Flavor, Acc) ->
@@ -152,70 +177,70 @@ make_filter([{<<"metadata.fts.", Field/binary>>, Op, Val, string} | Rest], actor
             % We search for an specific word in all fields
             % For example fieldX||valueY, found by LIKE '%||valueY %'
             % (final space makes sure word has finished)
-            <<"(fts_words LIKE '%||", Word/binary, " %')">>;
+            <<"(actors.fts_words LIKE '%||", Word/binary, " %')">>;
         {<<"*">>, prefix} ->
             % We search for a prefix word in all fields
             % For example fieldX||valueYXX, found by LIKE '%||valueY%'
-            <<"(fts_words LIKE '%||", Word/binary, "%')">>;
+            <<"(actors.fts_words LIKE '%||", Word/binary, "%')">>;
         {_, eq} ->
             % We search for an specific word in an specific fields
             % For example fieldX:valueYXX, found by LIKE '% FieldX:valueY %'
-            <<"(fts_words LIKE '% ", Field/binary, "||", Word/binary, " %')">>;
+            <<"(actors.fts_words LIKE '% ", Field/binary, "||", Word/binary, " %')">>;
         {_, prefix} ->
             % We search for a prefix word in an specific fields
             % For example fieldX:valueYXX, found by LIKE '% FieldX:valueY%'
-            <<"(fts_words LIKE '% ", Field/binary, "||", Word/binary, "%')">>;
+            <<"(actors.fts_words LIKE '% ", Field/binary, "||", Word/binary, "%')">>;
         _ ->
             <<"(TRUE = FALSE)">>
     end,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.is_enabled">>, eq, true, boolean}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(NOT metadata @> '{\"is_enabled\":false}')">>,
+    Filter = <<"(NOT actors.metadata @> '{\"is_enabled\":false}')">>,
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
 
 make_filter([{<<"metadata.is_enabled">>, eq, false, boolean}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(metadata @> '{\"is_enabled\":false}')">>,
+    Filter = <<"(actors.metadata @> '{\"is_enabled\":false}')">>,
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
 
 % Direct eq or ne filters in JSON produce @> syntax, that uses index
 % Other operations use -> ->> syntax, more flexible
 make_filter([{<<"metadata.labels.", Label/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    Filter = <<"(actors.metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.labels.", Label/binary>>, ne, Value, _Type}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(NOT metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    Filter = <<"(NOT actors.metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.annotations.", Label/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    Filter = <<"(actors.metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.annotations.", Label/binary>>, ne, Value, _Type}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(NOT metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    Filter = <<"(NOT actors.metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_nested_json(Field, Type, Value),
-    Filter = [<<"(metadata @> '">>, Json, <<"')">>],
+    Filter = [<<"(actors.metadata @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"metadata.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_nested_json(Field, Type, Value),
-    Filter = [<<"(NOT metadata @> '">>, Json, <<"')">>],
+    Filter = [<<"(NOT actors.metadata @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_nested_json(Field, Type, Value),
-    Filter = [<<"(data @> '">>, Json, <<"')">>],
+    Filter = [<<"(actors.data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Flavor, Acc) ->
     Filters1 = lists:foldl(
         fun(V, A) ->
             Json = field_nested_json(Field, Type, V),
-            [list_to_binary([<<"(data @> '">>, Json, <<"')">>]) | A]
+            [list_to_binary([<<"(actors.data @> '">>, Json, <<"')">>]) | A]
         end,
         [],
         Values),
@@ -224,7 +249,7 @@ make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Fl
 
 make_filter([{<<"data.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
     Json = field_nested_json(Field, Type, Value),
-    Filter = [<<"(NOT data @> '">>, Json, <<"')">>],
+    Filter = [<<"(NOT actors.data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{Field, _Op, _Val, object} | Rest], actors, Flavor, Acc) ->
@@ -280,24 +305,24 @@ make_filter([{<<"label:", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, A
         last -> <<" <= ">>;
         bottom -> <<" < ">>
     end,
-    Filter1 = [<<"(label_key ", Op2/binary>>, quote(Label), <<")">>],
+    Filter1 = [<<"(labels.label_key ", Op2/binary>>, quote(Label), <<")">>],
     Filter2 = case Value of
         <<>> ->
             Filter1;
         _ ->
-            [Filter1, [<<" AND (label_value ", Op2/binary>>, quote(Value), <<")">>]]
+            [Filter1, [<<" AND (labels.label_value ", Op2/binary>>, quote(Value), <<")">>]]
     end,
     make_filter(Rest, labels, Flavor, [list_to_binary(Filter2) | Acc]);
 
 make_filter([{<<"label:", Label/binary>>, exists, Bool, _}|Rest], labels, Flavor, Acc) ->
     Not = case Bool of true -> []; false -> <<"NOT ">> end,
-    Filter = [<<"(">>, Not, <<"label_key = ">>, quote(Label), <<")">>],
+    Filter = [<<"(">>, Not, <<"labels.label_key = ">>, quote(Label), <<")">>],
     make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"label:", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, Acc) ->
     Filter = [
-        <<"(label_key = ">>, quote(Label), <<") AND ">>,
-        <<"(">>, get_op(<<"label_value">>, Op, Value), <<")">>
+        <<"(labels.label_key = ">>, quote(Label), <<") AND ">>,
+        <<"(">>, get_op(<<"labels.label_value">>, Op, Value), <<")">>
     ],
     make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
 
@@ -338,23 +363,25 @@ get_op(Field, range, Value) ->
 
 
 %% @private
-field_db_name(<<"uid">>) -> <<"uid">>;
-field_db_name(<<"namespace">>) -> <<"namespace">>;
-field_db_name(<<"group">>) -> <<"\"group\"">>;
-field_db_name(<<"resource">>) -> <<"resource">>;
-field_db_name(<<"name">>) -> <<"name">>;
-field_db_name(<<"hash">>) -> <<"hash">>;
-field_db_name(<<"path">>) -> <<"path">>;
-field_db_name(<<"last_update">>) -> <<"last_update">>;
-field_db_name(<<"expires">>) -> <<"expires">>;
-field_db_name(<<"fts_word">>) -> <<"fts_word">>;
+field_db_name(<<"uid">>) -> <<"actors.uid">>;
+field_db_name(<<"namespace">>) -> <<"actors.namespace">>;
+field_db_name(<<"group">>) -> <<"actors.group">>;
+field_db_name(<<"resource">>) -> <<"actors.resource">>;
+field_db_name(<<"name">>) -> <<"actors.name">>;
+field_db_name(<<"hash">>) -> <<"actors.hash">>;
+field_db_name(<<"path">>) -> <<"actors.path">>;
+field_db_name(<<"last_update">>) -> <<"actors.last_update">>;
+field_db_name(<<"expires">>) -> <<"actors.expires">>;
+field_db_name(<<"fts_word">>) -> <<"actors.fts_word">>;
 %field_db_name(<<"data.", _/binary>>=Field) -> Field;
-field_db_name(<<"metadata.hash">>) -> <<"hash">>;
-field_db_name(<<"metadata.update_time">>) -> <<"last_update">>;
+field_db_name(<<"metadata.hash">>) -> <<"actors.hash">>;
+field_db_name(<<"metadata.update_time">>) -> <<"actors.last_update">>;
 % Any other metadata is kept
 %field_db_name(<<"metadata.", _/binary>>=Field) -> Field;
 % Any other field should be inside data in this implementation
 %field_db_name(Field) -> <<"data.", Field/binary>>.
+field_db_name(<<"label_key">>) -> <<"labels.label_key">>;
+field_db_name(<<"label_value">>) -> <<"labels.label_value">>;
 field_db_name(Field) -> Field.
 
 

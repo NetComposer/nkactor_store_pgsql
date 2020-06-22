@@ -21,7 +21,7 @@
 -module(nkactor_store_pgsql_search).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([search/2]).
--export([pgsql_actors/2, pgsql_labels/2, pgsql_delete/2, pgsql_any/2]).
+-export([pgsql_actors/2, pgsql_actors_count/2, pgsql_labels/2, pgsql_delete/2, pgsql_any/2]).
 -import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/2]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
@@ -107,6 +107,9 @@ search(actors_search, Params) ->
             search(actors_search_generic, Params)
     end;
 
+search(actors_search_generic, #{use_labels:=true}=Params) ->
+    search(actors_search_generic_labels, Params);
+
 search(actors_search_generic, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
@@ -131,6 +134,28 @@ search(actors_search_generic, Params) ->
         nkactor_store_pgsql_sql:select(Params, actors),
         SQLFilters,
         SQLSort,
+        <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
+        <<";">>
+    ],
+    {query, Query, fun ?MODULE:pgsql_actors/2};
+
+search(actors_search_generic_labels, #{do_count:=true}=Params) ->
+    Query = [
+        <<"SELECT COUNT(*) ">>,
+        <<" FROM labels JOIN actors ON label.uid=actors.uid">>,
+        nkactor_store_pgsql_sql:filters(Params, actors),
+        <<";">>
+    ],
+    {query, Query, fun ?MODULE:pgsql_actors_count/2};
+
+search(actors_search_generic_labels, Params) ->
+    From = maps:get(from, Params, 0),
+    Size = maps:get(size, Params, 10),
+    Query = [
+        <<"SELECT ">>, nkactor_store_pgsql_sql:select2(Params),
+        <<" FROM labels JOIN actors ON label.uid=actors.uid">>,
+        nkactor_store_pgsql_sql:filters(Params, actors),
+        nkactor_store_pgsql_sql:sort(Params, actors),
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],
@@ -295,6 +320,11 @@ pgsql_actors(Result, Meta) ->
         Rows),
     {ok, Actors, Meta2}.
 
+
+%% @private
+pgsql_actors_count([{{select, 1}, [{Total}], _}], Meta) ->
+    #{pgsql:=#{time:=Time}} = Meta,
+    {ok, [], #{size=>0, total=>Total, time=>Time}}.
 
 %% @private
 pgsql_delete([{{delete, Total}, [], _}], Meta) ->
