@@ -142,7 +142,7 @@ search(actors_search_generic, Params) ->
 search(actors_search_generic_labels, #{do_count:=true}=Params) ->
     Query = [
         <<"SELECT COUNT(*) ">>,
-        <<" FROM labels JOIN actors ON label.uid=actors.uid">>,
+        <<" FROM labels JOIN actors ON labels.uid=actors.uid">>,
         nkactor_store_pgsql_sql:filters(Params, actors),
         <<";">>
     ],
@@ -153,7 +153,7 @@ search(actors_search_generic_labels, Params) ->
     Size = maps:get(size, Params, 10),
     Query = [
         <<"SELECT ">>, nkactor_store_pgsql_sql:select2(Params),
-        <<" FROM labels JOIN actors ON label.uid=actors.uid">>,
+        <<" FROM labels JOIN actors ON labels.uid=actors.uid">>,
         nkactor_store_pgsql_sql:filters(Params, actors),
         nkactor_store_pgsql_sql:sort(Params, actors),
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),

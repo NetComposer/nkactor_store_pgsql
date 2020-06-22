@@ -373,16 +373,13 @@ field_db_name(<<"path">>) -> <<"actors.path">>;
 field_db_name(<<"last_update">>) -> <<"actors.last_update">>;
 field_db_name(<<"expires">>) -> <<"actors.expires">>;
 field_db_name(<<"fts_word">>) -> <<"actors.fts_word">>;
-%field_db_name(<<"data.", _/binary>>=Field) -> Field;
 field_db_name(<<"metadata.hash">>) -> <<"actors.hash">>;
 field_db_name(<<"metadata.update_time">>) -> <<"actors.last_update">>;
-% Any other metadata is kept
-%field_db_name(<<"metadata.", _/binary>>=Field) -> Field;
-% Any other field should be inside data in this implementation
-%field_db_name(Field) -> <<"data.", Field/binary>>.
+field_db_name(<<"data", Rest/binary>>) -> <<"actors.data", Rest/binary>>;
+field_db_name(<<"metadata", Rest/binary>>) -> <<"actors.metadata", Rest/binary>>;
 field_db_name(<<"label_key">>) -> <<"labels.label_key">>;
-field_db_name(<<"label_value">>) -> <<"labels.label_value">>;
-field_db_name(Field) -> Field.
+field_db_name(<<"label_value">>) -> <<"labels.label_value">>.
+%%field_db_name(Field) -> Field.
 
 
 
@@ -465,7 +462,14 @@ make_sort([{Order, <<"metadata.labels.", Label/binary>>, Type}|Rest], labels, Fl
 %% Extracts a field inside a JSON, it and casts it to json, string, integer o boolean
 field_name(Field, Type) ->
     Field2 = field_db_name(Field),
-    list_to_binary(field_name(Field2, Type, [], [])).
+    case Field2 of
+        <<"actors.data.", _/binary>> ->
+            list_to_binary(field_name(Field2, Type, [], []));
+        <<"actors.metadata.", _/binary>> ->
+            list_to_binary(field_name(Field2, Type, [], []));
+        Field2 ->
+            Field2
+    end.
 
 
 %% @private
@@ -477,17 +481,41 @@ field_name(Field, Type, [<<"links">>, <<"metadata">>], Acc) ->
 field_name(Field, Type, [<<"labels">>, <<"metadata">>], Acc) ->
     finish_field_name(Type, Field, Acc);
 
+%%field_name(Field, Type, Heads, Acc) ->
+%%    case binary:split(Field, <<".">>) of
+%%        [Last] when Acc==[] ->
+%%            [Last];
+%%        [Last] ->
+%%            finish_field_name(Type, Last, Acc);
+%%        [Base, Rest] when Acc==[] andalso (Base == <<"metadata">> orelse Base == <<"data">>) ->
+%%            field_name(Rest, Type, [Base|Heads], [Base, <<"->">>]);
+%%        [Base, Rest] ->
+%%            field_name(Rest, Type, [Base|Heads], Acc++[$', Base, $', <<"->">>])
+%%    end.
+
 field_name(Field, Type, Heads, Acc) ->
-    case binary:split(Field, <<".">>) of
+    case field_name_split(Field) of
         [Last] when Acc==[] ->
             [Last];
         [Last] ->
             finish_field_name(Type, Last, Acc);
-        [Base, Rest] when Acc==[] andalso (Base == <<"metadata">> orelse Base == <<"data">>) ->
+        [Base, Rest] when Acc==[] ->
             field_name(Rest, Type, [Base|Heads], [Base, <<"->">>]);
         [Base, Rest] ->
             field_name(Rest, Type, [Base|Heads], Acc++[$', Base, $', <<"->">>])
     end.
+
+
+field_name_split(<<"actors.data.", Rest/binary>>) ->
+    [<<"actors.data">>, Rest];
+
+field_name_split(<<"actors.metadata.", Rest/binary>>) ->
+    [<<"actors.metadata">>, Rest];
+
+field_name_split(Other) ->
+    binary:split(Other, <<".">>).
+
+
 
 finish_field_name(Type, Last, Acc) ->
     case Type of
