@@ -116,7 +116,11 @@ filters(Params, Table) ->
         _ ->
             [<<"(NOT ", F/binary, ")">> || F <- NotFilters2]
     end,
-    PathFilter = list_to_binary(filter_path(Params)),
+    PathParams = case Table of
+        actors -> Params;
+        labels -> Params#{use_labels => true}
+    end,
+    PathFilter = list_to_binary(filter_path(PathParams)),
     FilterList = [PathFilter | AndFilters2 ++ OrFilters4 ++ NotFilters3],
     Where = nklib_util:bjoin(FilterList, <<" AND ">>),
     [<<" WHERE ">>, Where].
