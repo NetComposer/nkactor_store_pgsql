@@ -189,7 +189,7 @@ search(actors_search_labels, Params) ->
 search(actors_delete_old, Params) ->
     Group = maps:get(group, Params),
     Res = maps:get(resource, Params),
-    Epoch = maps:get(epoch, params),
+    Epoch = maps:get(epoch, Params),
     Query = [
         <<"DELETE FROM actors">>,
         <<" WHERE \"group\"=">>, quote(Group), <<" AND resource=">>, quote(Res),
