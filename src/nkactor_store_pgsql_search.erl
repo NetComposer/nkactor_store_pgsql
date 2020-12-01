@@ -323,7 +323,12 @@ pgsql_actors(Result, Meta) ->
 %% @private
 pgsql_actors_count([{{select, 1}, [{Total}], _}], Meta) ->
     #{pgsql:=#{time:=Time}} = Meta,
+    {ok, [], #{size=>0, total=>Total, time=>Time}};
+
+pgsql_actors_count([_begin, _set, {{select, 1}, [{Total}], _}, _commit], Meta) ->
+    #{pgsql:=#{time:=Time}} = Meta,
     {ok, [], #{size=>0, total=>Total, time=>Time}}.
+
 
 %% @private
 pgsql_delete([{{delete, Total}, [], _}], Meta) ->
