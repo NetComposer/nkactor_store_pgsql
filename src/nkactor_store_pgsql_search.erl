@@ -21,9 +21,8 @@
 -module(nkactor_store_pgsql_search).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([search/2]).
--export([pgsql_actors/2, pgsql_delete/2, pgsql_any/2]).
--import(nkactor_store_pgsql_sql, [quote/1, filter_path/2]).
--import(nkactor_store_pgsql, [query/2, query/3]).
+-export([pgsql_actors/2, pgsql_actors_count/2, pgsql_labels/2, pgsql_delete/2, pgsql_any/2]).
+-import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/1]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
 
@@ -38,8 +37,6 @@
 search(actors_search_linked, Params) ->
     UID = maps:get(uid, Params),
     LinkType = maps:get(link_type, Params, any),
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     From = maps:get(from, Params, 0),
     Limit = maps:get(size, Params, 100),
     Query = [
@@ -51,7 +48,7 @@ search(actors_search_linked, Params) ->
             _ ->
                 [<<" AND link_type=">>, quote(LinkType)]
         end,
-        <<" AND ">>, filter_path(Namespace, Deep),
+        <<" AND ">>, filter_path(Params),
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Limit),
         <<";">>
     ],
@@ -69,8 +66,6 @@ search(actors_search_linked, Params) ->
 search(actors_search_fts, Params) ->
     Word = maps:get(word, Params),
     Field = maps:get(field, Params, any),
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     From = maps:get(from, Params, 0),
     Limit = maps:get(size, Params, 100),
     Word2 = nklib_parse:normalize(Word, #{unrecognized=>keep}),
@@ -83,7 +78,7 @@ search(actors_search_fts, Params) ->
     end,
     Query = [
         <<"SELECT uid FROM fts">>,
-        <<" WHERE ">>, Filter, <<" AND ">>, filter_path(Namespace, Deep),
+        <<" WHERE ">>, Filter, <<" AND ">>, filter_path(Params),
         case Field of
             any ->
                 [];
@@ -108,10 +103,13 @@ search(actors_search, Params) ->
             search(actors_search_generic, Params)
     end;
 
+search(actors_search_generic, #{use_labels:=true}=Params) ->
+    search(actors_search_generic_labels, Params);
+
 search(actors_search_generic, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
-    Totals = maps:get(totals, Params, false),
+    Totals = maps:get(get_total, Params, false),
     SQLFilters = nkactor_store_pgsql_sql:filters(Params, actors),
     SQLSort = nkactor_store_pgsql_sql:sort(Params, actors),
 
@@ -137,10 +135,32 @@ search(actors_search_generic, Params) ->
     ],
     {query, Query, fun ?MODULE:pgsql_actors/2};
 
-search(actors_search_labels, #{only_uid:=true}=Params) ->
+search(actors_search_generic_labels, #{do_count:=true}=Params) ->
+    Query = [
+        <<"SELECT COUNT(*) ">>,
+        <<" FROM labels JOIN actors ON labels.uid=actors.uid">>,
+        nkactor_store_pgsql_sql:filters(Params, actors),
+        <<";">>
+    ],
+    {query, Query, fun ?MODULE:pgsql_actors_count/2};
+
+search(actors_search_generic_labels, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
-    Totals = maps:get(totals, Params, false),
+    Query = [
+        <<"SELECT ">>, nkactor_store_pgsql_sql:select2(Params),
+        <<" FROM labels JOIN actors ON labels.uid=actors.uid">>,
+        nkactor_store_pgsql_sql:filters(Params, actors),
+        nkactor_store_pgsql_sql:sort(Params, actors),
+        <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
+        <<";">>
+    ],
+    {query, Query, fun ?MODULE:pgsql_actors/2};
+
+search(actors_search_labels, Params) ->
+    From = maps:get(from, Params, 0),
+    Size = maps:get(size, Params, 10),
+    Totals = maps:get(get_total, Params, false),
     SQLFilters = nkactor_store_pgsql_sql:filters(Params, labels),
     SQLSort = nkactor_store_pgsql_sql:sort(Params, labels),
 
@@ -161,50 +181,36 @@ search(actors_search_labels, #{only_uid:=true}=Params) ->
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],
-    {query, Query, fun ?MODULE:pgsql_actors/2};
-
-search(actors_delete, Params) ->
-    DoDelete = maps:get(do_delete, Params, false),
-    SQLFilters = nkactor_store_pgsql_sql:filters(Params, actors),
-    Query = [
-        case DoDelete of
-            false ->
-                <<"SELECT COUNT(*) FROM actors">>;
-            true ->
-                <<"DELETE FROM actors">>
-        end,
-        SQLFilters,
-        <<";">>
-    ],
-    {query, Query, fun pgsql_delete/2};
+    {query, Query, fun ?MODULE:pgsql_labels/2};
 
 search(actors_delete_old, Params) ->
     Group = maps:get(group, Params),
     Res = maps:get(resource, Params),
     Epoch = maps:get(epoch, params),
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     Query = [
         <<"DELETE FROM actors">>,
         <<" WHERE \"group\"=">>, quote(Group), <<" AND resource=">>, quote(Res),
         <<" AND last_update<">>, quote(Epoch),
-        <<" AND ">>, filter_path(Namespace, Deep),
+        <<" AND ">>, filter_path(Params),
         <<";">>
     ],
     {query, Query, fun pgsql_delete/2};
 
-
-search(actors_active, Params) ->
-    FromDate = maps:get(from_date, Params, <<>>),
-    Size = maps:get(size, Params, 10),
+% Find actors with activation date past or due in 2h from now
+% It should find:
+% - all actors having 'auto_activate' in metadata
+% - actors have a 'activation_date' in metadata
+search(actors_activate, #{last_time:=LastTime}=Params) ->
+    Size = maps:get(size, Params, 100),
     Query = [
-        <<"SELECT uid,namespace,\"group\",resource,name,last_update FROM actors">>,
-        <<" WHERE is_active='T' AND last_update>">>, quote(FromDate),
-        <<" ORDER BY last_update" >>,
+        <<"SELECT uid,namespace,\"group\",resource,name,activate FROM actors">>,
+        <<" WHERE activate < ">>, quote(LastTime),
+        <<" ORDER BY activate DESC">>,
         <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],
-    {query, Query, fun pgsql_active/2};
+    {query, Query, fun pgsql_activate/2};
+
 
 search(SearchType, _Params) ->
     {error, {search_not_implemented, SearchType}}.
@@ -216,7 +222,7 @@ search(SearchType, _Params) ->
 %% ===================================================================
 
 %% @private
-analyze(#{filter_fields:=Filter, sort_fields:=Sort, only_uid:=true}) ->
+analyze(#{fields_filter:=Filter, fields_sort:=Sort, only_uid:=true}) ->
     case analyze_filter_labels(Filter, false) of
         true ->
             case analyze_filter_sort(Sort) of
@@ -310,6 +316,11 @@ pgsql_actors(Result, Meta) ->
 
 
 %% @private
+pgsql_actors_count([{{select, 1}, [{Total}], _}], Meta) ->
+    #{pgsql:=#{time:=Time}} = Meta,
+    {ok, [], #{size=>0, total=>Total, time=>Time}}.
+
+%% @private
 pgsql_delete([{{delete, Total}, [], _}], Meta) ->
     {ok, Total, Meta};
 
@@ -319,10 +330,10 @@ pgsql_delete([{{select, _}, [{Total}], _}], Meta) ->
 
 
 %% @private
-pgsql_active([{{select, 0}, [], _OpMeta}], _Meta) ->
-    {ok, [], #{last_date=><<>>, size=>0}};
+pgsql_activate([{{select, 0}, [], _OpMeta}], Meta) ->
+    {ok, [], #{meta=>Meta}};
 
-pgsql_active([{{select, Size}, Rows, _OpMeta}], _Meta) ->
+pgsql_activate([{{select, Size}, Rows, _OpMeta}], _Meta) ->
     ActorIds = [
         #actor_id{
             uid = UID,
@@ -331,9 +342,30 @@ pgsql_active([{{select, Size}, Rows, _OpMeta}], _Meta) ->
             resource = Res,
             name = Name
         }
-        || {UID, Namespace, Group, Res, Name, _Date} <- Rows],
-    [{_, _, _, _, _, LastDate}|_] = lists:reverse(Rows),
-    {ok, ActorIds, #{last_date=>LastDate, size=>Size}}.
+        || {UID, Namespace, Group, Res, Name, _Last} <- Rows],
+    [{_, _, _, _, _, Last}|_] = lists:reverse(Rows),
+    {ok, ActorIds, #{last_time=>Last, size=>Size}}.
+
+
+%% @private
+pgsql_labels(Result, Meta) ->
+    % lager:error("NKLOG META ~p", [_Meta]),
+    #{nkactor_params:=_Params, pgsql:=#{time:=Time}} = Meta,
+    {Rows, Meta2} = case Result of
+        [{{select, Size}, Rows0, _OpMeta}] ->
+            {Rows0, #{size=>Size, time=>Time}};
+        [{{select, 1}, [{Total}], _}, {{select, Size}, Rows0, _OpMeta}] ->
+            {Rows0, #{size=>Size, total=>Total, time=>Time}}
+    end,
+    Labels = lists:map(
+        fun
+            ({UID}) ->
+                {UID, <<>>, <<>>};
+            ({UID, Key, Value}) ->
+                {UID, Key, Value}
+        end,
+        Rows),
+    {ok, Labels, Meta2}.
 
 
 %% @private

@@ -54,11 +54,11 @@ init(SrvId, Tries) when Tries > 0 ->
                             ?LLOG(warning, "detected database at wrong version", []),
                             ok
                     end;
-                _ ->
-                    ?LLOG(error, "unrecognized database!", []),
+                O ->
+                    ?LLOG(error, "unrecognized database!: ~p", [O]),
                     {error, database_unrecognized}
             end;
-        {error, relation_unknown} ->
+        {error, field_unknown} ->
             Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
             ?LLOG(warning, "database not found: Creating it (~p)", [Flavour]),
             case nkactor_store_pgsql:query(SrvId, create_database_query(Flavour)) of
@@ -117,14 +117,13 @@ create_database_query(postgresql) ->
             path TEXT NOT NULL,
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
-            is_active TEXT,
-            expires INTEGER,
+            activate TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
-        CREATE INDEX last_update_idx on actors (last_update);
-        CREATE INDEX expires_idx on actors (expires);
-        CREATE INDEX active_idx on actors (is_active, last_update);
+        --- text_pattern_ops optimizes LIKE '...%'
+        CREATE INDEX last_update_idx on actors (last_update DESC, \"group\", resource, name text_pattern_ops);
+        CREATE INDEX activate_idx on actors (activate);
         CREATE INDEX data_idx on actors USING gin(data);
         CREATE INDEX metadata_idx on actors USING gin(metadata);
         INSERT INTO versions VALUES ('actors', '1');
@@ -139,7 +138,7 @@ create_database_query(postgresql) ->
         INSERT INTO versions VALUES ('labels', '1');
         CREATE TABLE links (
             uid TEXT NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
-            link_target TEXT NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
+            link_target TEXT NOT NULL REFERENCES actors(uid),
             link_type TEXT NOT NULL,
             path TEXT NOT NULL,
             PRIMARY KEY (uid, link_target, link_type)
@@ -184,13 +183,11 @@ create_database_query(cockroachdb) ->
             path STRING NOT NULL,
             hash STRING NOT NULL,
             last_update STRING NOT NULL,
-            is_active STRING,
-            expires INTEGER,
+            activate STRING,
             fts_words STRING,
             UNIQUE INDEX name_idx (namespace, \"group\", resource, name),
             INDEX last_update_idx (last_update),
-            INDEX expires_idx (expires),
-            INDEX active_idx (is_active, last_update),
+            INDEX activate_idx (activate),
             INVERTED INDEX data_idx (data),
             INVERTED INDEX metadata_idx (metadata)
         );
@@ -206,7 +203,7 @@ create_database_query(cockroachdb) ->
         INSERT INTO versions VALUES ('labels', '1');
         CREATE TABLE links (
             uid STRING NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
-            link_target STRING NOT NULL REFERENCES actors(uid) ON DELETE CASCADE,
+            link_target STRING NOT NULL REFERENCES actors(uid),
             link_type STRING NOT NULL,
             path STRING NOT NULL,
             PRIMARY KEY (uid, link_target, link_type),
@@ -252,14 +249,12 @@ create_database_query(yugabyte) ->
             path TEXT NOT NULL,
             hash TEXT NOT NULL,
             last_update TEXT NOT NULL,
-            is_active TEXT,
-            expires INTEGER,
+            activate TEXT,
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
         CREATE INDEX last_update_idx on actors (last_update);
-        CREATE INDEX expires_idx on actors (expires);
-        CREATE INDEX active_idx on actors (is_active, last_update);
+        CREATE INDEX activate_idx on actors (activate);
         INSERT INTO versions VALUES ('actors', '1');
         CREATE TABLE labels (
             uid TEXT NOT NULL,
@@ -302,12 +297,12 @@ create_database_query(yugabyte) ->
 
 truncate(SrvId) ->
     Q = <<"
-        DROP TABLE IF EXISTS versions CASCADE;
-        DROP TABLE IF EXISTS actors CASCADE;
-        DROP TABLE IF EXISTS links CASCADE;
-        DROP TABLE IF EXISTS labels CASCADE;
-        DROP TABLE IF EXISTS fts CASCADE;
-        DROP TABLE IF EXISTS namespaces CASCADE;
+        TRUNCATE versions CASCADE;
+        TRUNCATE actors CASCADE;
+        TRUNCATE links CASCADE;
+        TRUNCATE labels CASCADE;
+        TRUNCATE fts CASCADE;
+        TRUNCATE namespaces CASCADE;
     ">>,
     case nkactor_store_pgsql:query(SrvId, Q) of
         {ok, _, _} ->

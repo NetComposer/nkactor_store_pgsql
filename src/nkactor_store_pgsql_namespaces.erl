@@ -21,7 +21,7 @@
 -module(nkactor_store_pgsql_namespaces).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([get_namespace/2, update_namespace/5]).
--import(nkactor_store_pgsql, [query/2, query/3, quote/1, quote_list/1]).
+-import(nkactor_store_pgsql, [query/2, query/3, quote/1]).
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
 

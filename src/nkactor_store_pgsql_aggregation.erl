@@ -21,7 +21,7 @@
 -module(nkactor_store_pgsql_aggregation).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([aggregation/2]).
--import(nkactor_store_pgsql, [query/2, query/3, quote/1, quote_list/1, filter_path/2]).
+-import(nkactor_store_pgsql, [query/2, query/3, quote/1, filter_path/1]).
 
 
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
@@ -36,22 +36,18 @@
 
 %% @doc
 aggregation(actors_aggregation_groups, Params) ->
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     Query = [
         <<"SELECT \"group\", COUNT(\"group\") FROM actors">>,
-        <<" WHERE ">>, filter_path(Namespace, Deep),
+        <<" WHERE ">>, filter_path(Params),
         <<" GROUP BY \"group\";">>
     ],
     {query, Query, fun pgsql_aggregation/2};
 
 aggregation(actors_aggregation_resources, Params) ->
     Group = maps:get(group, Params),
-    Namespace = maps:get(namespace, Params, <<>>),
-    Deep = maps:get(deep, Params, false),
     Query = [
         <<"SELECT resource, COUNT(resource) FROM actors">>,
-        <<" WHERE \"group\" = ">>, quote(Group), <<" AND ">>, filter_path(Namespace, Deep),
+        <<" WHERE \"group\" = ">>, quote(Group), <<" AND ">>, filter_path(Params),
         <<" GROUP BY resource;">>
     ],
     {query, Query, fun pgsql_aggregation/2};

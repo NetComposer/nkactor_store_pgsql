@@ -18,8 +18,8 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc NkACTOR Domain Application Module
--module(nkactor_app).
+%% @doc
+-module(nkactor_store_pgsql_app).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -behaviour(application).
 
@@ -27,7 +27,6 @@
 -export([set_nodes/1]).
 -export([get/1, get/2, put/2, del/1]).
 
--include("nkactor.hrl").
 
 -define(APP, nkactor).
 -compile({no_auto_import, [get/1, put/2]}).
@@ -65,10 +64,8 @@ start(_Type, _Args) ->
         {ok, _} ->
             {ok, Pid} = nkactor_sup:start_link(),
             {ok, Vsn} = application:get_key(nkactor, vsn),
-            nkserver_util:register_package_class(?PACKAGE_CLASS_NKACTOR, nkactor,
-                                                 #{use_master => true}),
-
-            lager:info("NkACTOR v~s has started.", [Vsn]),
+            %nkserver_util:register_package_class(?PACKAGE_CLASS_NKACTOR, nkactor, #{use_master => true}),
+            lager:info("NkACTOR STORE PgSQL v~s has started.", [Vsn]),
             {ok, Pid};
         {error, Error} ->
             lager:error("Error parsing config: ~p", [Error]),
