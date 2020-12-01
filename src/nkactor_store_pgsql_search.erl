@@ -278,6 +278,8 @@ pgsql_actors(Result, Meta) ->
     {Rows, Meta2} = case Result of
         [{{select, Size}, Rows0, _OpMeta}] ->
             {Rows0, #{size=>Size, time=>Time}};
+        [_begin, _set, {{select, Size}, Rows0, _OpMeta}, _commit] ->
+            {Rows0, #{size=>Size, time=>Time}};
         [{{select, 1}, [{Total}], _}, {{select, Size}, Rows0, _OpMeta}] ->
             {Rows0, #{size=>Size, total=>Total, time=>Time}}
     end,
