@@ -137,10 +137,11 @@ search(actors_search_generic, Params) ->
 
 search(actors_search_generic_labels, #{do_count:=true}=Params) ->
     Query = [
+        <<"BEGIN; SET LOCAL enable_bitmapscan = off;">>,
         <<"SELECT COUNT(*) ">>,
         <<" FROM labels JOIN actors ON labels.uid=actors.uid">>,
         nkactor_store_pgsql_sql:filters(Params, actors),
-        <<";">>
+        <<"; COMMIT;">>
     ],
     {query, Query, fun ?MODULE:pgsql_actors_count/2};
 
@@ -148,12 +149,14 @@ search(actors_search_generic_labels, Params) ->
     From = maps:get(from, Params, 0),
     Size = maps:get(size, Params, 10),
     Query = [
+        <<"BEGIN; SET LOCAL enable_bitmapscan = off;">>,
         <<"SELECT ">>, nkactor_store_pgsql_sql:select2(Params),
         <<" FROM labels JOIN actors ON labels.uid=actors.uid">>,
         nkactor_store_pgsql_sql:filters(Params, actors),
         nkactor_store_pgsql_sql:sort(Params, actors),
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
-        <<";">>
+        <<"; COMMIT;">>
+
     ],
     {query, Query, fun ?MODULE:pgsql_actors/2};
 
