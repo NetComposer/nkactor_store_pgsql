@@ -22,7 +22,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([get_pgsql_srv/1]).
 -export([query/2, query/3]).
--export([quote/1, filter_path/2]).
+-export([quote/1, filter_path/1]).
 -export_type([result_fun/0]).
 
 -include("nkactor_store_pgsql.hrl").
@@ -55,8 +55,7 @@ get_pgsql_srv(ActorSrvId) ->
     {error, {pgsql_error, nkpgsql:pgsql_error()}|term()}.
 
 query(SrvId, Query) ->
-    nkserver_ot:tag(?PGSQL_SPAN, sql, Query),
-    nkpgsql:query(SrvId, Query, #{}).
+    query(SrvId, Query, #{}).
 
 
 %% @doc Performs a query. Must use the PgSQL service
@@ -65,8 +64,16 @@ query(SrvId, Query) ->
     {error, {pgsql_error, nkpgsql:pgsql_error()}|term()}.
 
 query(SrvId, Query, QueryMeta) ->
-    nkserver_ot:tag(?PGSQL_SPAN, <<"pgsql.sql">>, Query),
-    nkpgsql:query(SrvId, Query, QueryMeta).
+    QueryBin = list_to_binary([Query]),
+    Tag = case byte_size(QueryBin) < 4096 of
+        true ->
+            QueryBin;
+        false ->
+            <<Tag0:4000/binary, _/binary>> = QueryBin,
+            <<Tag0/binary, "...">>
+    end,
+    nkserver_trace:event(sql, "~s", [Tag], #{}),
+    nkpgsql:query(SrvId, QueryBin, QueryMeta).
 
 
 
@@ -80,17 +87,27 @@ quote(Term) ->
     nkpgsql_util:quote(Term).
 
 
+filter_path(Opts) ->
+    Namespace = maps:get(namespace, Opts, <<>>),
+    Deep = maps:get(deep, Opts, false),
+    filter_path(Namespace, Deep, Opts).
+
+
 %% @private
-filter_path(<<>>, true) ->
+filter_path(<<>>, true, _Opts) ->
     [<<"TRUE">>];
 
-filter_path(Namespace, Deep) ->
+filter_path(Namespace, Deep, Opts) ->
     Path = nkactor_lib:make_rev_path(Namespace),
+    Field = case Opts of
+        #{use_labels:=true} -> <<"labels.path">>;
+        _ -> <<"actors.path">>
+    end,
     case Deep of
         true ->
-            [<<"(path LIKE ">>, quote(<<Path/binary, "%">>), <<")">>];
+            [<<"(", Field/binary, " LIKE ">>, quote(<<Path/binary, "%">>), <<")">>];
         false ->
-            [<<"(path = ">>, quote(Path), <<")">>]
+            [<<"(", Field/binary, " = ">>, quote(Path), <<")">>]
     end.
 
 

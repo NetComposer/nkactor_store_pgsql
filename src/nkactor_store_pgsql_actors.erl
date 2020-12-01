@@ -242,7 +242,6 @@ update(SrvId, Actor, _Opts) ->
     save(SrvId, update, Actor).
 
 
-
 %% @doc Called from actor_srv_save callback
 %% Links to invalid objects will not be allowed (foreign key)
 save(SrvId, Mode, Actor) when is_map(Actor) ->

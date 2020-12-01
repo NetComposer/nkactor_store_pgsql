@@ -22,8 +22,8 @@
 %% @doc SQL utilities for stores to use
 -module(nkactor_store_pgsql_sql).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([select/2, filters/2, sort/2, field_name/2]).
--import(nkactor_store_pgsql, [quote/1, filter_path/2]).
+-export([select/2, select2/1, filters/2, sort/2]).
+-import(nkactor_store_pgsql, [quote/1, filter_path/1]).
 
 -include_lib("nkactor/include/nkactor.hrl").
 
@@ -63,13 +63,38 @@ select(_Params, labels) ->
 
 
 
+%% @private
+select2(#{only_uid:=true}) ->
+    <<"actors.uid">>;
+
+select2(Params) ->
+    [
+        <<"actors.uid,actors.namespace,actors.group,actors.resource,actors.name">>,
+        case maps:get(get_metadata, Params, false) of
+            true ->
+                <<",actors.metadata">>;
+            false ->
+                []
+        end,
+        case maps:get(get_data, Params, false) of
+            true ->
+                <<",actors.data">>;
+            false ->
+                []
+        end
+    ].
+
+
+
+
+
 %% ===================================================================
 %% Filters
 %% ===================================================================
 
 
 %% @private
-filters(#{namespace:=Namespace}=Params, Table) ->
+filters(Params, Table) ->
     Flavor = maps:get(flavor, Params, #{}),
     Filters = maps:get(filter, Params, #{}),
     AndFilters1 = expand_filter(maps:get('and', Filters, []), []),
@@ -91,8 +116,11 @@ filters(#{namespace:=Namespace}=Params, Table) ->
         _ ->
             [<<"(NOT ", F/binary, ")">> || F <- NotFilters2]
     end,
-    Deep = maps:get(deep, Params, false),
-    PathFilter = list_to_binary(filter_path(Namespace, Deep)),
+    PathParams = case Table of
+        actors -> Params;
+        labels -> Params#{use_labels => true}
+    end,
+    PathFilter = list_to_binary(filter_path(PathParams)),
     FilterList = [PathFilter | AndFilters2 ++ OrFilters4 ++ NotFilters3],
     Where = nklib_util:bjoin(FilterList, <<" AND ">>),
     [<<" WHERE ">>, Where].
@@ -109,6 +137,8 @@ expand_filter([#{field:=Field, value:=Value}=Term|Rest], Acc) ->
         _ when Op==exists ->
             to_boolean(Value);
         string when Op==values, is_list(Value) ->
+            [to_bin(V) || V <- Value];
+        array when Op==values, is_list(Value) ->
             [to_bin(V) || V <- Value];
         string ->
             to_bin(Value);
@@ -140,7 +170,7 @@ make_filter([], _Table, _Flavor, Acc) ->
 
 make_filter([{<<"group+resource">>, eq, Val, string} | Rest], actors, Flavor, Acc) ->
     [Group, Type] = binary:split(Val, <<"+">>),
-    Filter = <<"(\"group\"='", Group/binary, "' AND resource='", Type/binary, "')">>,
+    Filter = <<"(\"actors.group\"='", Group/binary, "' AND actors.resource='", Type/binary, "')">>,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.fts.", Field/binary>>, Op, Val, string} | Rest], actors, Flavor, Acc) ->
@@ -150,50 +180,79 @@ make_filter([{<<"metadata.fts.", Field/binary>>, Op, Val, string} | Rest], actor
             % We search for an specific word in all fields
             % For example fieldX||valueY, found by LIKE '%||valueY %'
             % (final space makes sure word has finished)
-            <<"(fts_words LIKE '%||", Word/binary, " %')">>;
+            <<"(actors.fts_words LIKE '%||", Word/binary, " %')">>;
         {<<"*">>, prefix} ->
             % We search for a prefix word in all fields
             % For example fieldX||valueYXX, found by LIKE '%||valueY%'
-            <<"(fts_words LIKE '%||", Word/binary, "%')">>;
+            <<"(actors.fts_words LIKE '%||", Word/binary, "%')">>;
         {_, eq} ->
             % We search for an specific word in an specific fields
             % For example fieldX:valueYXX, found by LIKE '% FieldX:valueY %'
-            <<"(fts_words LIKE '% ", Field/binary, "||", Word/binary, " %')">>;
+            <<"(actors.fts_words LIKE '% ", Field/binary, "||", Word/binary, " %')">>;
         {_, prefix} ->
             % We search for a prefix word in an specific fields
             % For example fieldX:valueYXX, found by LIKE '% FieldX:valueY%'
-            <<"(fts_words LIKE '% ", Field/binary, "||", Word/binary, "%')">>;
+            <<"(actors.fts_words LIKE '% ", Field/binary, "||", Word/binary, "%')">>;
         _ ->
             <<"(TRUE = FALSE)">>
     end,
     make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.is_enabled">>, eq, true, boolean}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(NOT metadata @> '{\"is_enabled\":false}')">>,
+    Filter = <<"(NOT actors.metadata @> '{\"is_enabled\":false}')">>,
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
 
 make_filter([{<<"metadata.is_enabled">>, eq, false, boolean}|Rest], actors, Flavor, Acc) ->
-    Filter = <<"(metadata @> '{\"is_enabled\":false}')">>,
+    Filter = <<"(actors.metadata @> '{\"is_enabled\":false}')">>,
     make_filter(Rest, actors, Flavor, [Filter|Acc]);
 
-make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
-    Filter = [<<"(data @> '">>, Json, <<"')">>],
-    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+% Direct eq or ne filters in JSON produce @> syntax, that uses index
+% Other operations use -> ->> syntax, more flexible
+make_filter([{<<"metadata.labels.", Label/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(actors.metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
+
+make_filter([{<<"metadata.labels.", Label/binary>>, ne, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(NOT actors.metadata @> '{\"labels\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
+
+make_filter([{<<"metadata.annotations.", Label/binary>>, eq, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(actors.metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
+
+make_filter([{<<"metadata.annotations.", Label/binary>>, ne, Value, _Type}|Rest], actors, Flavor, Acc) ->
+    Filter = <<"(NOT actors.metadata @> '{\"annotations\":{\"", Label/binary, "\":\"", Value/binary, "\"}}')">>,
+    make_filter(Rest, actors, Flavor, [Filter | Acc]);
 
 make_filter([{<<"metadata.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
-    Filter = [<<"(metadata @> '">>, Json, <<"')">>],
-    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
-
-make_filter([{<<"data.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
-    Filter = [<<"(NOT data @> '">>, Json, <<"')">>],
+    Json = field_nested_json(Field, Type, Value),
+    Filter = [<<"(actors.metadata @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"metadata.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
-    Json = field_value(Field, Type, Value),
-    Filter = [<<"(NOT metadata @> '">>, Json, <<"')">>],
+    Json = field_nested_json(Field, Type, Value),
+    Filter = [<<"(NOT actors.metadata @> '">>, Json, <<"')">>],
+    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"data.", Field/binary>>, eq, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_nested_json(Field, Type, Value),
+    Filter = [<<"(actors.data @> '">>, Json, <<"')">>],
+    make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
+
+make_filter([{<<"data.", Field/binary>>, values, Values, Type}|Rest], actors, Flavor, Acc) ->
+    Filters1 = lists:foldl(
+        fun(V, A) ->
+            Json = field_nested_json(Field, Type, V),
+            [list_to_binary([<<"(actors.data @> '">>, Json, <<"')">>]) | A]
+        end,
+        [],
+        Values),
+    Filters2 = nklib_util:bjoin(Filters1, <<" OR ">>),
+    make_filter(Rest, actors, Flavor, [<<$(, Filters2/binary, $)>> | Acc]);
+
+make_filter([{<<"data.", Field/binary>>, ne, Value, Type}|Rest], actors, Flavor, Acc) ->
+    Json = field_nested_json(Field, Type, Value),
+    Filter = [<<"(NOT actors.data @> '">>, Json, <<"')">>],
     make_filter(Rest, actors, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{Field, _Op, _Val, object} | Rest], actors, Flavor, Acc) ->
@@ -249,24 +308,24 @@ make_filter([{<<"label:", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, A
         last -> <<" <= ">>;
         bottom -> <<" < ">>
     end,
-    Filter1 = [<<"(label_key ", Op2/binary>>, quote(Label), <<")">>],
+    Filter1 = [<<"(labels.label_key ", Op2/binary>>, quote(Label), <<")">>],
     Filter2 = case Value of
         <<>> ->
             Filter1;
         _ ->
-            [Filter1, [<<" AND (label_value ", Op2/binary>>, quote(Value), <<")">>]]
+            [Filter1, [<<" AND (labels.label_value ", Op2/binary>>, quote(Value), <<")">>]]
     end,
     make_filter(Rest, labels, Flavor, [list_to_binary(Filter2) | Acc]);
 
 make_filter([{<<"label:", Label/binary>>, exists, Bool, _}|Rest], labels, Flavor, Acc) ->
     Not = case Bool of true -> []; false -> <<"NOT ">> end,
-    Filter = [<<"(">>, Not, <<"label_key = ">>, quote(Label), <<")">>],
+    Filter = [<<"(">>, Not, <<"labels.label_key = ">>, quote(Label), <<")">>],
     make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
 
 make_filter([{<<"label:", Label/binary>>, Op, Value, _}|Rest], labels, Flavor, Acc) ->
     Filter = [
-        <<"(label_key = ">>, quote(Label), <<") AND ">>,
-        <<"(">>, get_op(<<"label_value">>, Op, Value), <<")">>
+        <<"(labels.label_key = ">>, quote(Label), <<") AND ">>,
+        <<"(">>, get_op(<<"labels.label_value">>, Op, Value), <<")">>
     ],
     make_filter(Rest, labels, Flavor, [list_to_binary(Filter) | Acc]);
 
@@ -307,24 +366,23 @@ get_op(Field, range, Value) ->
 
 
 %% @private
-field_db_name(<<"uid">>) -> <<"uid">>;
-field_db_name(<<"namespace">>) -> <<"namespace">>;
-field_db_name(<<"group">>) -> <<"\"group\"">>;
-field_db_name(<<"resource">>) -> <<"resource">>;
-field_db_name(<<"name">>) -> <<"name">>;
-field_db_name(<<"hash">>) -> <<"hash">>;
-field_db_name(<<"path">>) -> <<"path">>;
-field_db_name(<<"last_update">>) -> <<"last_update">>;
-field_db_name(<<"expires">>) -> <<"expires">>;
-field_db_name(<<"fts_word">>) -> <<"fts_word">>;
-%field_db_name(<<"data.", _/binary>>=Field) -> Field;
-field_db_name(<<"metadata.hash">>) -> <<"hash">>;
-field_db_name(<<"metadata.update_time">>) -> <<"last_update">>;
-% Any other metadata is kept
-%field_db_name(<<"metadata.", _/binary>>=Field) -> Field;
-% Any other field should be inside data in this implementation
-%field_db_name(Field) -> <<"data.", Field/binary>>.
-field_db_name(Field) -> Field.
+field_db_name(<<"uid">>) -> <<"actors.uid">>;
+field_db_name(<<"namespace">>) -> <<"actors.namespace">>;
+field_db_name(<<"group">>) -> <<"actors.group">>;
+field_db_name(<<"resource">>) -> <<"actors.resource">>;
+field_db_name(<<"name">>) -> <<"actors.name">>;
+field_db_name(<<"hash">>) -> <<"actors.hash">>;
+field_db_name(<<"path">>) -> <<"actors.path">>;
+field_db_name(<<"last_update">>) -> <<"actors.last_update">>;
+field_db_name(<<"expires">>) -> <<"actors.expires">>;
+field_db_name(<<"fts_word">>) -> <<"actors.fts_word">>;
+field_db_name(<<"metadata.hash">>) -> <<"actors.hash">>;
+field_db_name(<<"metadata.update_time">>) -> <<"actors.last_update">>;
+field_db_name(<<"data", Rest/binary>>) -> <<"actors.data", Rest/binary>>;
+field_db_name(<<"metadata", Rest/binary>>) -> <<"actors.metadata", Rest/binary>>;
+field_db_name(<<"label_key">>) -> <<"labels.label_key">>;
+field_db_name(<<"label_value">>) -> <<"labels.label_value">>.
+%%field_db_name(Field) -> Field.
 
 
 
@@ -407,7 +465,14 @@ make_sort([{Order, <<"metadata.labels.", Label/binary>>, Type}|Rest], labels, Fl
 %% Extracts a field inside a JSON, it and casts it to json, string, integer o boolean
 field_name(Field, Type) ->
     Field2 = field_db_name(Field),
-    list_to_binary(field_name(Field2, Type, [], [])).
+    case Field2 of
+        <<"actors.data.", _/binary>> ->
+            list_to_binary(field_name(Field2, Type, [], []));
+        <<"actors.metadata.", _/binary>> ->
+            list_to_binary(field_name(Field2, Type, [], []));
+        Field2 ->
+            Field2
+    end.
 
 
 %% @private
@@ -419,17 +484,41 @@ field_name(Field, Type, [<<"links">>, <<"metadata">>], Acc) ->
 field_name(Field, Type, [<<"labels">>, <<"metadata">>], Acc) ->
     finish_field_name(Type, Field, Acc);
 
+%%field_name(Field, Type, Heads, Acc) ->
+%%    case binary:split(Field, <<".">>) of
+%%        [Last] when Acc==[] ->
+%%            [Last];
+%%        [Last] ->
+%%            finish_field_name(Type, Last, Acc);
+%%        [Base, Rest] when Acc==[] andalso (Base == <<"metadata">> orelse Base == <<"data">>) ->
+%%            field_name(Rest, Type, [Base|Heads], [Base, <<"->">>]);
+%%        [Base, Rest] ->
+%%            field_name(Rest, Type, [Base|Heads], Acc++[$', Base, $', <<"->">>])
+%%    end.
+
 field_name(Field, Type, Heads, Acc) ->
-    case binary:split(Field, <<".">>) of
+    case field_name_split(Field) of
         [Last] when Acc==[] ->
             [Last];
         [Last] ->
             finish_field_name(Type, Last, Acc);
-        [Base, Rest] when Acc==[] andalso (Base == <<"metadata">> orelse Base == <<"data">>) ->
+        [Base, Rest] when Acc==[] ->
             field_name(Rest, Type, [Base|Heads], [Base, <<"->">>]);
         [Base, Rest] ->
             field_name(Rest, Type, [Base|Heads], Acc++[$', Base, $', <<"->">>])
     end.
+
+
+field_name_split(<<"actors.data.", Rest/binary>>) ->
+    [<<"actors.data">>, Rest];
+
+field_name_split(<<"actors.metadata.", Rest/binary>>) ->
+    [<<"actors.metadata">>, Rest];
+
+field_name_split(Other) ->
+    binary:split(Other, <<".">>).
+
+
 
 finish_field_name(Type, Last, Acc) ->
     case Type of
@@ -438,6 +527,8 @@ finish_field_name(Type, Last, Acc) ->
         string ->
             Acc++[$>, $', Last, $'];    % '>' finishes ->>
         string_null ->
+            Acc++[$>, $', Last, $'];    % '>' finishes ->>
+        array ->
             Acc++[$>, $', Last, $'];    % '>' finishes ->>
         integer ->
             [$(|Acc] ++ [$>, $', Last, $', <<")::INTEGER">>];
@@ -448,7 +539,7 @@ finish_field_name(Type, Last, Acc) ->
 
 %% @private Generates a JSON based on a field
 %% make_json_spec(<<"a.b.c">>) = {"a":{"b":"c"}}
-field_value(Field, Type, Value) ->
+field_nested_json(Field, Type, Value) ->
     List = binary:split(Field, <<".">>, [global]),
     Value2 = case Type of
         array -> [Value];
