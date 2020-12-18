@@ -62,5 +62,5 @@ plugin_start(SrvId, _Config, _Service) ->
 			ok;
 		PgSrvId ->
 			nkactor_store_pgsql_init:init(PgSrvId),
-		    ?CALL_SRV(SrvId, actor_db_init, [SrvId])
+		    ?CALL_SRV(SrvId, actor_db_init, [SrvId, PgSrvId])
 	end.
