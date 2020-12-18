@@ -336,6 +336,8 @@ save(SrvId, Mode, Actors) ->
                 ]
         end
     ],
+    {ok, Extra} = SrvId:actor_store_pgsql_save(SrvId, Mode, Fields),
+    lager:error("EXTRA IS ~p", [Extra]),
 
     Query = [
             <<"BEGIN;">>,
@@ -343,6 +345,7 @@ save(SrvId, Mode, Actors) ->
             LabelsQuery,
             LinksQuery,
             FtsQuery,
+            Extra,
             <<"COMMIT;">>
     ],
     case query(SrvId, Query, #{auto_rollback=>true}) of
