@@ -28,6 +28,7 @@
 -define(LLOG(Type, Txt, Args), lager:Type("NkACTOR PGSQL "++Txt, Args)).
 
 
+-include_lib("nkserver/include/nkserver.hrl").
 -include_lib("nkactor/include/nkactor.hrl").
 -include("nkactor_store_pgsql.hrl").
 
@@ -336,7 +337,7 @@ save(SrvId, Mode, Actors) ->
                 ]
         end
     ],
-    {ok, Extra} = SrvId:actor_store_pgsql_save(SrvId, Mode, Fields),
+    {ok, Extra} = ?CALL_SRV(SrvId, actor_store_pgsql_save, [SrvId, Mode, Fields]),
     lager:error("EXTRA IS ~p", [Extra]),
 
     Query = [
