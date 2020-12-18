@@ -234,22 +234,22 @@ read(SrvId, #actor_id{namespace=Namespace, name=Name}, _Opts)
 
 
 %% @doc
-create(SrvId, Actor, _Opts) ->
-    save(SrvId, create, Actor).
+create(PgSrvId, ActorSrvId, Actor, _Opts) ->
+    save(PgSrvId, ActorSrvId, create, Actor).
 
 
 %% @doc
-update(SrvId, Actor, _Opts) ->
-    save(SrvId, update, Actor).
+update(PgSrvId, ActorSrvId, Actor, _Opts) ->
+    save(PgSrvId, ActorSrvId, update, Actor).
 
 
 %% @doc Called from actor_srv_save callback
 %% Links to invalid objects will not be allowed (foreign key)
-save(SrvId, Mode, Actor) when is_map(Actor) ->
-    save(SrvId, Mode, [Actor]);
+save(PgSrvId, ActorSrvId, Mode, Actor) when is_map(Actor) ->
+    save(PgSrvId, ActorSrvId, Mode, [Actor]);
 
-save(SrvId, Mode, Actors) ->
-    Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
+save(PgSrvId, ActorSrvId, Mode, Actors) ->
+    Flavour = nkserver:get_cached_config(PgSrvId, nkpgsql, flavour),
     Fields = populate_fields(Actors, Mode, #save_fields{}),
     #save_fields{
         names = FieldNames,
@@ -337,7 +337,7 @@ save(SrvId, Mode, Actors) ->
                 ]
         end
     ],
-    {ok, Extra} = ?CALL_SRV(SrvId, actor_store_pgsql_save, [SrvId, Mode, Fields]),
+    {ok, Extra} = ?CALL_SRV(ActorSrvId, actor_store_pgsql_save, [ActorSrvId, Mode, Fields]),
     lager:error("EXTRA IS ~p", [Extra]),
 
     Query = [
@@ -349,7 +349,7 @@ save(SrvId, Mode, Actors) ->
             Extra,
             <<"COMMIT;">>
     ],
-    case query(SrvId, Query, #{auto_rollback=>true}) of
+    case query(PgSrvId, Query, #{auto_rollback=>true}) of
         {ok, _, SaveMeta} ->
             {ok, SaveMeta};
         {error, foreign_key_violation} ->
@@ -361,9 +361,9 @@ save(SrvId, Mode, Actors) ->
 
 
 %% @doc
-delete(SrvId, #actor_id{uid=UID}=ActorId, _Opts) when is_binary(UID) ->
-    Debug = nkserver:get_cached_config(SrvId, nkactor_store_pgsql, debug),
-    Flavour = nkserver:get_cached_config(SrvId, nkpgsql, flavour),
+delete(PgSrvId, #actor_id{uid=UID}=ActorId, _Opts) when is_binary(UID) ->
+    Debug = nkserver:get_cached_config(PgSrvId, nkactor_store_pgsql, debug),
+    Flavour = nkserver:get_cached_config(PgSrvId, nkpgsql, flavour),
     QUID = quote(UID),
     % Labels, FTS and links will be deleted automatically
     % If other actor has a link to us, it will return 'actor_has_linked_actors'
@@ -371,7 +371,7 @@ delete(SrvId, #actor_id{uid=UID}=ActorId, _Opts) when is_binary(UID) ->
     QueryOpts = #{
         pgsql_debug => Debug
     },
-    case query(SrvId, Query, QueryOpts) of
+    case query(PgSrvId, Query, QueryOpts) of
         {ok, _, Meta} ->
             % In case the actor is still active, terminate it
             nkactor_srv:raw_stop(ActorId, backend_deleted),
@@ -382,10 +382,10 @@ delete(SrvId, #actor_id{uid=UID}=ActorId, _Opts) when is_binary(UID) ->
             {error, Error}
     end;
 
-delete(SrvId, ActorId, Opts)  ->
-    case find(SrvId, ActorId, Opts) of
+delete(PgSrvId, ActorId, Opts)  ->
+    case find(PgSrvId, ActorId, Opts) of
         {ok, #actor_id{uid=UID}=ActorId2, _Meta} when is_binary(UID) ->
-            delete(SrvId, ActorId2, Opts);
+            delete(PgSrvId, ActorId2, Opts);
         {error, Error} ->
             {error, Error}
     end.
@@ -397,36 +397,36 @@ delete(SrvId, ActorId, Opts)  ->
 %% Then it will do new passes, until all are deleted or no new actor can be deleted
 %% (because are other actors linking to it)
 
-delete_multi(SrvId, Ids, Opts) ->
-    delete_multi(SrvId, Ids, Opts, 0, maps:get(max_iterations, Opts, 100)).
+delete_multi(PgSrvId, Ids, Opts) ->
+    delete_multi(PgSrvId, Ids, Opts, 0, maps:get(max_iterations, Opts, 100)).
 
 
-delete_multi(SrvId, Ids, Opts, Count, Tries) when Tries > 0 ->
-    case do_delete_multi(SrvId, Ids, Opts, [], []) of
+delete_multi(PgSrvId, Ids, Opts, Count, Tries) when Tries > 0 ->
+    case do_delete_multi(PgSrvId, Ids, Opts, [], []) of
         {ok, Deleted, []} ->
             {ok, #{deleted=>Count+length(Deleted)}};
         {ok, Deleted, NotDeleted} ->
-            delete_multi(SrvId, NotDeleted, Opts, Count+length(Deleted), Tries-1);
+            delete_multi(PgSrvId, NotDeleted, Opts, Count+length(Deleted), Tries-1);
         {error, Error} ->
             lager:warning("Delete_multi error: ~p", [Error]),
             {error, Error}
     end;
 
-delete_multi(_SrvId, _Ids, _Opts, _Count, _Tries) ->
+delete_multi(_PgSrvId, _Ids, _Opts, _Count, _Tries) ->
     {error, too_many_tries}.
 
 
 
 %% @private
-do_delete_multi(_SrvId, [], _Opts, Deleted, NotDeleted) ->
+do_delete_multi(_PgSrvId, [], _Opts, Deleted, NotDeleted) ->
     {ok, Deleted, NotDeleted};
 
-do_delete_multi(SrvId, [Id|Rest], Opts, Deleted, NotDeleted) ->
-    case delete(SrvId, Id, Opts) of
+do_delete_multi(PgSrvId, [Id|Rest], Opts, Deleted, NotDeleted) ->
+    case delete(PgSrvId, Id, Opts) of
         {ok, _} ->
-            do_delete_multi(SrvId, Rest, Opts, [Id|Deleted], NotDeleted);
+            do_delete_multi(PgSrvId, Rest, Opts, [Id|Deleted], NotDeleted);
         {error, actor_has_linked_actors} ->
-            do_delete_multi(SrvId, Rest, Opts, Deleted, [Id|NotDeleted]);
+            do_delete_multi(PgSrvId, Rest, Opts, Deleted, [Id|NotDeleted]);
         {error, Error} ->
             {error, Error}
     end.

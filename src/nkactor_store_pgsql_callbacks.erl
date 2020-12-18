@@ -147,7 +147,7 @@ actor_db_create(SrvId, Actors, Opts) ->
                     ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, Actors, Opts])
                 of
                     {ok, Actors2} ->
-                        nkactor_store_pgsql_actors:create(PgSrvId, Actors2, Opts);
+                        nkactor_store_pgsql_actors:create(PgSrvId, SrvId, Actors2, Opts);
                     {error, Error} ->
                         {error, Error}
                 end
@@ -170,7 +170,7 @@ actor_db_update(SrvId, Actors, Opts) when is_list(Actors) ->
                     ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, update, Actors, Opts])
                 of
                     {ok, Actors2} ->
-                        nkactor_store_pgsql_actors:update(PgSrvId, Actors2, Opts);
+                        nkactor_store_pgsql_actors:update(PgSrvId, SrvId, Actors2, Opts);
                     {error, Error} ->
                         {error, Error}
                 end
