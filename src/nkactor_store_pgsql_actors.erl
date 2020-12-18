@@ -20,7 +20,7 @@
 
 -module(nkactor_store_pgsql_actors).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([find/3, read/3, create/3, update/3, delete/3, delete_multi/3]).
+-export([find/3, read/3, create/4, update/4, delete/3, delete_multi/3]).
 -export([get_links/3, get_linked/3]).
 -import(nkactor_store_pgsql, [query/2, query/3, quote/1]).
 
