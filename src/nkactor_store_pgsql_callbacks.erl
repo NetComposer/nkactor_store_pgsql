@@ -24,7 +24,7 @@
 
 
 -export([actor_store_pgsql_parse/4, actor_store_pgsql_unparse/4]).
--export([actor_store_pgsql_save/3]).
+-export([actor_store_pgsql_save/4]).
 -export([status/1, parse_actors/5, new_span/4]).
 -export([actor_db_init/1,
          actor_db_find/3, actor_db_read/3, actor_db_create/3, actor_db_update/3,
@@ -58,12 +58,10 @@ actor_store_pgsql_unparse(_SrvId, _Op, Actors, _Opts) ->
     {ok, Actors}.
 
 
-actor_store_pgsql_save(_SrvId, _Mode, _Fields) ->
+actor_store_pgsql_save(_ActorSrvId, _Mode, _Actors, _Fields) ->
     {ok, <<>>}.
 
 
-actor_store_pgsql_delete(_SrvId, _Data) ->
-    {ok, <<>>}.
 
 
 
