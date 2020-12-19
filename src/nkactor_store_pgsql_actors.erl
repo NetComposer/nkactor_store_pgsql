@@ -338,7 +338,6 @@ save(PgSrvId, ActorSrvId, Mode, Actors) ->
         end
     ],
     {ok, Extra} = ?CALL_SRV(ActorSrvId, actor_store_pgsql_save, [ActorSrvId, Mode, Actors, Fields]),
-    lager:error("EXTRA IS ~p", [Extra]),
 
     Query = [
             <<"BEGIN;">>,
