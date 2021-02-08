@@ -133,6 +133,8 @@ search(actors_search_generic, Params) ->
         <<" OFFSET ">>, to_bin(From), <<" LIMIT ">>, to_bin(Size),
         <<";">>
     ],
+    lager:warning("Q: ~s", [list_to_binary(Query)]),
+
     {query, Query, fun ?MODULE:pgsql_actors/2};
 
 search(actors_search_generic_labels, #{do_count:=true}=Params) ->
