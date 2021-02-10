@@ -121,7 +121,7 @@ create_database_query(postgresql) ->
             fts_words TEXT
         );
         CREATE UNIQUE INDEX name_idx on actors (namespace, \"group\", resource, name);
-        CREATE INDEX actors_name_idx on actors (\"group\", resource, name);
+        CREATE INDEX actors_iter_idx on actors (\"group\", resource, uid);
 
         --- text_pattern_ops optimizes LIKE '...%'
         CREATE INDEX last_update_idx on actors (last_update DESC, \"group\", resource, name text_pattern_ops);
