@@ -107,9 +107,9 @@ actor_db_find(SrvId, ActorId, Opts) ->
         PgSrvId ->
             Fun = fun() ->
                 case nkactor_store_pgsql_actors:find(PgSrvId, ActorId, Opts) of
-                    {ok, ActorId, Meta} ->
+                    {ok, ActorId2, Meta} ->
                         ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>find}]),
-                        {ok, ActorId, Meta};
+                        {ok, ActorId2, Meta};
                     {error, Error} ->
                         {error, Error}
                 end
