@@ -105,7 +105,15 @@ actor_db_find(SrvId, ActorId, Opts) ->
         undefined ->
             continue;
         PgSrvId ->
-            Fun = fun() -> nkactor_store_pgsql_actors:find(PgSrvId, ActorId, Opts) end,
+            Fun = fun() ->
+                case nkactor_store_pgsql_actors:find(PgSrvId, ActorId, Opts) of
+                    {ok, ActorId, Meta} ->
+                        ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>find}]),
+                        {ok, ActorId, Meta};
+                    {error, Error} ->
+                        {error, Error}
+                end
+            end,
             new_span(SrvId, PgSrvId, find, Fun)
     end.
 
@@ -122,6 +130,7 @@ actor_db_read(SrvId, ActorId, Opts) ->
             Fun = fun() ->
                 case nkactor_store_pgsql_actors:read(PgSrvId, ActorId, Opts) of
                     {ok, RawActor, Meta} ->
+                        ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>read}]),
                         parse_actor(SrvId, RawActor, Meta, Opts);
                     {error, Error} ->
                         {error, Error}
@@ -145,7 +154,13 @@ actor_db_create(SrvId, Actors, Opts) ->
                     ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, create, Actors, Opts])
                 of
                     {ok, Actors2} ->
-                        nkactor_store_pgsql_actors:create(PgSrvId, SrvId, Actors2, Opts);
+                        case nkactor_store_pgsql_actors:create(PgSrvId, SrvId, Actors2, Opts) of
+                            {ok, Meta} ->
+                                ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>create}]),
+                                {ok, Meta};
+                            {error, Error} ->
+                                {error, Error}
+                        end;
                     {error, Error} ->
                         {error, Error}
                 end
@@ -168,7 +183,13 @@ actor_db_update(SrvId, Actors, Opts) when is_list(Actors) ->
                     ?CALL_SRV(SrvId, actor_store_pgsql_unparse, [SrvId, update, Actors, Opts])
                 of
                     {ok, Actors2} ->
-                        nkactor_store_pgsql_actors:update(PgSrvId, SrvId, Actors2, Opts);
+                        case nkactor_store_pgsql_actors:update(PgSrvId, SrvId, Actors2, Opts) of
+                            {ok, Meta} ->
+                                ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>update}]),
+                                {ok, Meta};
+                            {error, Error} ->
+                                {error, Error}
+                        end;
                     {error, Error} ->
                         {error, Error}
                 end
@@ -190,7 +211,15 @@ actor_db_delete(SrvId, ActorId, Opts) ->
         undefined ->
             continue;
         PgSrvId ->
-            Fun = fun() -> nkactor_store_pgsql_actors:delete(PgSrvId, ActorId, Opts) end,
+            Fun = fun() ->
+                case nkactor_store_pgsql_actors:delete(PgSrvId, ActorId, Opts) of
+                    {ok, Meta} ->
+                        ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>delete}]),
+                        {ok, Meta};
+                    {error, Error} ->
+                        {error, Error}
+                end
+            end,
             new_span(SrvId, PgSrvId, delete, Fun)
     end.
 
@@ -224,6 +253,7 @@ actor_db_search(SrvId, Type, Opts) ->
                         Opts2 = #{result_fun=>Fun, nkactor_params=>Opts},
                         case nkactor_store_pgsql:query(PgSrvId, Query, Opts2) of
                             {ok, ActorList, Meta} ->
+                                ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>search, type=>Type}]),
                                 parse_actors(ActorList, SrvId, Meta, Opts, []);
                             {error, Error} ->
                                 {error, Error}
@@ -248,7 +278,13 @@ actor_db_aggregate(SrvId, Type, Opts) ->
             Fun = fun() ->
                 case nkactor_store_pgsql_aggregation:aggregation(Type, Opts) of
                     {query, Query, Fun} ->
-                        nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun});
+                        case nkactor_store_pgsql:query(PgSrvId, Query, #{result_fun=>Fun}) of
+                            {ok, ActorList, Meta} ->
+                                ?CALL_SRV(SrvId, actor_db_meta, [SrvId, Meta#{op=>search, type=>Type}]),
+                                {ok, ActorList, Meta};
+                            {error, Error} ->
+                                {error, Error}
+                        end;
                     {error, Error} ->
                         {error, Error}
                 end
